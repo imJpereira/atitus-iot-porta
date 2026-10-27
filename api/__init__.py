@@ -10,6 +10,7 @@ def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(current_app.config["DATABASE"])
         g.db.row_factory = sqlite3.Row
+        g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
 
@@ -32,9 +33,11 @@ def create_app(db_path=None):
     migrate(app.config["DATABASE"])
 
     from api.employees import bp as employees_bp, bp_sync
+    from api.events import bp as events_bp
 
     app.register_blueprint(employees_bp)
     app.register_blueprint(bp_sync)
+    app.register_blueprint(events_bp)
 
     @app.teardown_appcontext
     def close_db(_exc):
