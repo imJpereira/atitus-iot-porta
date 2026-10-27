@@ -1,20 +1,20 @@
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, g, jsonify
+from flask import Flask, current_app, g, jsonify
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(ROOT / "data" / "app.db")
+        g.db = sqlite3.connect(current_app.config["DATABASE"])
         g.db.row_factory = sqlite3.Row
     return g.db
 
 
-def migrate():
-    db = sqlite3.connect(ROOT / "data" / "app.db")
+def migrate(db_path):
+    db = sqlite3.connect(db_path)
     db.execute("CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY)")
     done = {r[0] for r in db.execute("SELECT name FROM schema_migrations")}
     for f in sorted((Path(__file__).parent / "migrations").glob("*.sql")):
@@ -25,10 +25,15 @@ def migrate():
     db.close()
 
 
-def create_app():
+def create_app(db_path=None):
     app = Flask(__name__, static_folder=str(ROOT / "web"), static_url_path="")
-    (ROOT / "data").mkdir(exist_ok=True)
-    migrate()
+    app.config["DATABASE"] = Path(db_path or ROOT / "data" / "app.db")
+    app.config["DATABASE"].parent.mkdir(exist_ok=True)
+    migrate(app.config["DATABASE"])
+
+    from api.employees import bp as employees_bp
+
+    app.register_blueprint(employees_bp)
 
     @app.teardown_appcontext
     def close_db(_exc):
