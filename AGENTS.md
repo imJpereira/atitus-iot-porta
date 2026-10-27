@@ -30,5 +30,5 @@ uv add <pacote>                           # adiciona dependência
 - Dependências só via `uv add`/`uv remove`; nunca editar `uv.lock` à mão.
 - Frontend sem dependências externas; usar `fetch` para falar com `/api`.
 - Não adicionar ORM nem framework JS sem decisão explícita.
-- Para escrever código, sempre usar as skills `/ponytail:ponytail` e `/flask-python`.
+- Para escrever código, sempre usar as skills `/ponytail` e `/flask-python`.
 - Agentes de IA nunca devem fazer commits; isso é atribuição do desenvolvedor.
