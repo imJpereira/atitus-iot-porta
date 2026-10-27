@@ -31,9 +31,10 @@ def create_app(db_path=None):
     app.config["DATABASE"].parent.mkdir(exist_ok=True)
     migrate(app.config["DATABASE"])
 
-    from api.employees import bp as employees_bp
+    from api.employees import bp as employees_bp, bp_sync
 
     app.register_blueprint(employees_bp)
+    app.register_blueprint(bp_sync)
 
     @app.teardown_appcontext
     def close_db(_exc):
