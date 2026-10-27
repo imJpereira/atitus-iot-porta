@@ -51,10 +51,12 @@ def create_app(db_path=None):
 
     from api.employees import bp as employees_bp, bp_sync
     from api.events import bp as events_bp
+    from api.export import bp as export_bp
 
     app.register_blueprint(employees_bp)
     app.register_blueprint(bp_sync)
     app.register_blueprint(events_bp)
+    app.register_blueprint(export_bp)
 
     @app.teardown_appcontext
     def close_db(_exc):
