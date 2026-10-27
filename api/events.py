@@ -2,10 +2,17 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
-from api import get_db
+from api import get_db, require_pi_key
 from api.employees import error, serialize
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
+
+
+@bp.before_request
+def check_pi_key():
+    if request.method == "POST":
+        return require_pi_key()
+
 
 EVENT_TYPES = ("entrada", "saida", "acesso_negado", "tentativa_invasao")
 STRING_FIELDS = ("id", "rfid_tag", "source")

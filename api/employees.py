@@ -2,7 +2,7 @@ import sqlite3
 
 from flask import Blueprint, jsonify, request
 
-from api import get_db
+from api import get_db, require_pi_key
 
 bp = Blueprint("employees", __name__, url_prefix="/api/employees")
 
@@ -11,6 +11,7 @@ FLAG_FIELDS = ("has_room_access", "is_active")
 RESERVED_FIELDS = ("id", "created_at", "updated_at")
 
 bp_sync = Blueprint("sync", __name__, url_prefix="/api/sync")
+bp_sync.before_request(require_pi_key)
 
 
 def error(message: str, status: int):
