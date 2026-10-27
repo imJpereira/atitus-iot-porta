@@ -249,12 +249,15 @@ Proof: `uv run pytest tests/test_employees.py -k test_delete_204`
 **C21** - `DELETE` with an unknown id returns 404 (EMP-05, AC 7)
 Proof: `uv run pytest tests/test_employees.py -k test_delete_missing_404`
 
+**C22** - Text fields are stored and returned without surrounding whitespace on `POST` and `PATCH` (EMP-02, Assumptions: strip)
+Proof: `uv run pytest tests/test_employees.py -k test_text_fields_are_stripped`
+
 ---
 
 ## Handoff
 
 **Settled mid-build:** user: "deixe as mudanças prontas para que eu comite" - no agent commits (AGENTS.md); T1-T6 implemented and left uncommitted. Added `[tool.pytest.ini_options] pythonpath = ["."]` to `pyproject.toml` so tests import `api`.
-**Dispatched:** none (Verifier not run: proofs need a committed, clean `HEAD`)
+**Dispatched:** Verifier at HEAD b2c9955 (sent)
 **Walked:** none
 
 ---

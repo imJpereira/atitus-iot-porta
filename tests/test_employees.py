@@ -181,3 +181,36 @@ def test_delete_missing_404(client):
     response = client.delete("/api/employees/999")
     assert response.status_code == 404
     assert "error" in response.get_json()
+
+
+def test_text_fields_are_stripped(client):
+    created = post(client, name="  Ana  ", role=" dev ").get_json()
+    assert (created["name"], created["role"]) == ("Ana", "dev")
+    patched = client.patch(
+        f"/api/employees/{created['id']}", json={"name": "  Bia  "}
+    ).get_json()
+    assert patched["name"] == "Bia"
+
+
+@pytest.mark.parametrize("field", ["has_room_access", "is_active"])
+@pytest.mark.parametrize("bad", [1, "true", None])
+def test_flag_not_boolean_400_on_patch(client, field, bad):
+    created = post(client).get_json()
+    response = client.patch(f"/api/employees/{created['id']}", json={field: bad})
+    assert response.status_code == 400
+    assert field in response.get_json()["error"]
+
+
+@pytest.mark.parametrize("body", [[], "text", 5])
+def test_body_not_object_400_on_patch(client, body):
+    created = post(client).get_json()
+    response = client.patch(f"/api/employees/{created['id']}", json=body)
+    assert response.status_code == 400
+    assert "error" in response.get_json()
+
+
+def test_unknown_field_400_on_patch(client):
+    created = post(client).get_json()
+    response = client.patch(f"/api/employees/{created['id']}", json={"nickname": "x"})
+    assert response.status_code == 400
+    assert "nickname" in response.get_json()["error"]

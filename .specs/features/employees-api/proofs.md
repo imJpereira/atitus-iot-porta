@@ -1,7 +1,7 @@
 # employees-api proofs
 
-**HEAD**: d26be36
-**Tree**: dirty - api/__init__.py, pyproject.toml, uv.lock, api/employees.py, tests/
+**HEAD**: b2c9955
+**Tree**: dirty - .gitignore
 **Result**: 22 pass, 0 fail; mutations 0 killed, 0 not
 
 | Check | Proof | Ran | Passed | Result |
@@ -28,3 +28,8 @@
 | C20 | `uv run pytest tests/test_employees.py -k test_delete_204` | 1 | 1 | pass |
 | C21 | `uv run pytest tests/test_employees.py -k test_delete_missing_404` | 1 | 1 | pass |
 | Build | `uv run pytest` | - | - | pass |
+
+## Mutations
+
+| Mutation | Location | Killed |
+| --- | --- | --- |
