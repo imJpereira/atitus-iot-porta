@@ -61,6 +61,12 @@ def test_date_filter_is_from_inclusive_to_exclusive(client):
     assert [row["id"] for row in export_json(client, **{"from": "2026-10-27T10:00:00Z", "to": "2026-10-27T12:00:00Z"})] == ["e10", "e11"]
 
 
+def test_date_filter_has_second_resolution_and_truncates_fractions(client):
+    send(client, "e1", timestamp="2026-10-27T10:00:00Z")
+    assert [r[0] for r in export_csv(client, **{"from": "2026-10-27T10:00:00.9Z"})[1:]] == ["e1"]
+    assert export_csv(client, **{"to": "2026-10-27T10:00:00.9Z"}) == [COLUMNS]
+
+
 def test_new_event_shows_up_in_next_export(client):
     send(client, "e1")
     assert [row[0] for row in export_csv(client)[1:]] == ["e1"]
@@ -114,6 +120,7 @@ def test_empty_export_is_header_only_csv_and_empty_json(client):
     assert export_json(client, **empty) == []
     reversed_range = {"from": "2026-10-27T12:00:00Z", "to": "2026-10-27T10:00:00Z"}
     assert export_csv(client, **reversed_range) == [COLUMNS]
+    assert export_json(client, **reversed_range) == []
 
 
 def test_order_is_timestamp_ascending_then_insertion(client):
@@ -144,6 +151,14 @@ def test_pandas_loads_csv_and_json_without_adjustments(client):
     from_json = pd.DataFrame(export_json(client))
     assert list(from_json.columns) == COLUMNS
     assert pd.to_datetime(from_json["timestamp"]).tolist() == frame["timestamp"].tolist()
+
+
+def test_csv_quotes_commas_quotes_and_newlines(client):
+    employee = make_employee(client, name='Ana, "A"\nSilva', registration_id="1,2")
+    send(client, "e1")
+    assert export_csv(client)[1] == [
+        "e1", "2026-10-27T10:00:00Z", "entrada", "AA:BB", str(employee["id"]), 'Ana, "A"\nSilva', "1,2",
+    ]
 
 
 def test_csv_headers_utf8_without_bom_and_attachment(client):
@@ -192,9 +207,12 @@ def test_bad_filter_is_400(client, route, name, value):
 
 @pytest.mark.parametrize("route", ROUTES)
 def test_bad_filter_accepts_raw_plus_in_offset(client, route):
+    send(client, "before", timestamp="2026-10-27T09:59:59Z")
     send(client, "e1", timestamp="2026-10-27T10:00:00Z")
     response = client.get(f"{route}?from=2026-10-27T11:00:00+01:00", headers=ADMIN)
     assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "e1" in body and "before" not in body
 
 
 def test_pi_endpoints_reject_admin_key(client):
