@@ -8,11 +8,19 @@ from flask import Flask, current_app, g, jsonify, request
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def require_pi_key():
-    key = os.environ.get("PI_API_KEY") or ""
+def require_key(env_name):
+    key = os.environ.get(env_name) or ""
     sent = request.headers.get("X-API-Key") or ""
     if not key or not hmac.compare_digest(sent.encode(), key.encode()):
         return jsonify(error="unauthorized"), 401
+
+
+def require_pi_key():
+    return require_key("PI_API_KEY")
+
+
+def require_admin_key():
+    return require_key("ADMIN_API_KEY")
 
 
 def get_db():
