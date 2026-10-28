@@ -10,7 +10,13 @@
   <div class="layout">
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <div class="brand-logo">A</div>
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L5 5V11C5 15.5 8 19.7 12 22C16 19.7 19 15.5 19 11V5L12 2Z" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M12 7V14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M9 11H15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
         <div>
           <strong>ARGOS</strong>
           <small>Sistema de Controle de Acesso e Monitoramento</small>
@@ -25,8 +31,25 @@
         <button class="menu-item" data-view="devices">Dispositivos</button>
       </nav>
       <div class="sidebar-footer">
-        <p id="session-user">admin</p>
-        <button id="btn-logout" type="button" class="btn btn-ghost">Encerrar sessão</button>
+        <button id="btn-session-card" class="session-card session-trigger" type="button" aria-expanded="false" aria-controls="session-popover">
+          <div class="session-avatar" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="8" r="3.6" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M5 20C5.7 16.8 8.2 15 12 15C15.8 15 18.3 16.8 19 20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="session-meta">
+            <p id="session-user">admin</p>
+            <small>Administrador</small>
+          </div>
+        </button>
+        <div id="session-popover" class="session-popover" hidden>
+          <p><strong>Primeiro acesso:</strong> <span id="session-first-access">—</span></p>
+          <p><strong>Último acesso:</strong> <span id="session-last-access">—</span></p>
+          <p><strong>Sessão atual:</strong> <span id="session-current-access">—</span></p>
+          <p><strong>Acessos neste navegador:</strong> <span id="session-total-access">1</span></p>
+        </div>
+        <button id="btn-logout" type="button" class="btn btn-ghost">Sair</button>
       </div>
     </aside>
 
@@ -338,9 +361,9 @@
           <p class="muted">Esta seção exibe apenas informações confirmadas pela API disponível.</p>
           <div class="cards-grid">
             <article class="card nested">
-              <h3>Backend ARGOS</h3>
+              <h3>API do servidor ARGOS</h3>
               <p id="device-backend-status" class="status-badge status-neutral">Desconhecido</p>
-              <p id="device-backend-details" class="muted">Sem verificação recente.</p>
+              <p id="device-backend-details" class="muted">Sem verificação recente da API.</p>
             </article>
             <article class="card nested">
               <h3>Raspberry Pi</h3>
@@ -358,7 +381,7 @@
               <p class="muted">Depende de integração de hardware/backend ainda não exposta ao frontend.</p>
             </article>
           </div>
-          <button id="btn-refresh-devices" type="button" class="btn btn-ghost">Verificar backend agora</button>
+          <button id="btn-refresh-devices" type="button" class="btn btn-ghost">Verificar API agora</button>
         </article>
       </section>
     </main>

@@ -62,6 +62,7 @@ input.invalid {
   display: grid;
   grid-template-columns: 260px 1fr;
   min-height: 100vh;
+  min-width: 0;
 }
 
 .sidebar {
@@ -74,6 +75,7 @@ input.invalid {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 1.25rem;
+  overflow-y: auto;
 }
 
 .brand {
@@ -85,13 +87,17 @@ input.invalid {
 .brand-logo {
   width: 2.25rem;
   height: 2.25rem;
-  border-radius: 999px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
-  font-weight: 700;
   background: var(--green-soft);
   color: var(--green);
   border: 1px solid #1f6647;
+}
+
+.brand-logo svg {
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 .brand small {
@@ -130,13 +136,74 @@ input.invalid {
   padding-top: 0.8rem;
 }
 
-.sidebar-footer p {
-  margin: 0 0 0.45rem;
+.session-card {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.65rem;
+  width: 100%;
+}
+
+.session-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0.2rem;
+  border-radius: 10px;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.session-trigger:hover {
+  background: #162321;
+  border-color: #2a3b36;
+}
+
+.session-avatar {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  background: #1a2321;
+  border: 1px solid #32413d;
+  color: #c8d3cf;
+  display: grid;
+  place-items: center;
+}
+
+.session-avatar svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.session-meta p {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #dce7e3;
+}
+
+.session-meta small {
   color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.session-popover {
+  border: 1px solid #2a3b36;
+  background: #151e1c;
+  border-radius: 10px;
+  padding: 0.55rem;
+  margin: 0 0 0.65rem;
+}
+
+.session-popover p {
+  margin: 0.35rem 0;
+  color: #ccdad5;
+  font-size: 0.76rem;
 }
 
 .content {
   padding: 1.2rem;
+  min-width: 0;
 }
 
 .topbar {
@@ -160,11 +227,13 @@ input.invalid {
 
 .view {
   display: none;
+  min-width: 0;
 }
 
 .view.is-active {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .card {
@@ -172,6 +241,7 @@ input.invalid {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.9rem;
+  min-width: 0;
 }
 
 .card.nested {
@@ -202,6 +272,7 @@ input.invalid {
 
 .table-wrap {
   overflow-x: auto;
+  max-width: 100%;
 }
 
 table {
@@ -465,28 +536,92 @@ body.login-body {
   display: grid;
   place-items: center;
   padding: 1rem;
+  background:
+    linear-gradient(rgba(5, 9, 8, 0.62), rgba(5, 9, 8, 0.88)),
+    radial-gradient(circle at center, #153224, #070a09 58%);
 }
 
 .login-panel {
   width: min(430px, 100%);
-  background: rgba(13, 19, 18, 0.94);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 1.2rem;
+  background: linear-gradient(180deg, rgba(14, 26, 23, 0.96), rgba(12, 18, 17, 0.96));
+  border: 1px solid #1f6647;
+  border-radius: 18px;
+  padding: 1.3rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
 }
 
 .login-brand {
   text-align: center;
-  margin-bottom: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.login-shield {
+  width: 3.1rem;
+  height: 3.1rem;
+  border-radius: 14px;
+  margin: 0 auto 0.55rem;
+  border: 1px solid #1f6647;
+  color: #33e596;
+  display: grid;
+  place-items: center;
+  background: rgba(18, 48, 36, 0.45);
+}
+
+.login-shield svg {
+  width: 1.8rem;
+  height: 1.8rem;
 }
 
 .login-brand h1 {
   margin: 0;
+  letter-spacing: 0.04em;
+}
+
+.login-subtitle {
+  color: #d8e4e0;
+  margin: 0.35rem 0 0.1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .login-brand p {
-  margin: 0.35rem 0 0;
+  margin: 0.2rem 0 0;
   color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.login-label {
+  margin: 0.18rem 0;
+  display: block;
+  color: #b8c8c2;
+}
+
+.input-wrap,
+.password-wrap {
+  margin-bottom: 0.45rem;
+}
+
+.login-panel input {
+  background: #1a2327;
+  border-color: #32413d;
+  padding-left: 0.8rem;
+}
+
+.login-btn {
+  width: 100%;
+  margin-top: 0.9rem;
+  padding: 0.65rem 0.8rem;
+  background: linear-gradient(180deg, #3af39f, #22d584);
+  border-color: #2de18e;
+  color: #05311d;
+  font-size: 1rem;
+}
+
+.login-footnote {
+  text-align: center;
+  font-size: 0.8rem;
+  color: #a4b5ae;
+  margin: 0.9rem 0 0;
 }
 
 .password-wrap {
@@ -495,12 +630,30 @@ body.login-body {
 
 .password-wrap button {
   position: absolute;
-  right: 0.4rem;
-  top: 0.35rem;
+  right: 0.3rem;
+  top: 0.26rem;
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
   background: transparent;
   color: var(--muted);
   border: 0;
+  border-radius: 8px;
   cursor: pointer;
+}
+
+.password-wrap button:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.password-wrap button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.password-wrap button.is-open {
+  color: #d7e5df;
 }
 
 @media (max-width: 980px) {

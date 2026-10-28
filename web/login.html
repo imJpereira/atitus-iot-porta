@@ -9,21 +9,37 @@
 <body class="login-body">
   <div class="login-panel">
     <div class="login-brand">
+      <div class="login-shield" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L5 5V11C5 15.5 8 19.7 12 22C16 19.7 19 15.5 19 11V5L12 2Z" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M12 7V14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M9 11H15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
       <h1>ARGOS</h1>
+      <p class="login-subtitle">Sala de Segurança</p>
       <p>Sistema de Controle de Acesso e Monitoramento</p>
     </div>
     <p id="error" class="feedback error" role="alert" hidden></p>
     <form id="login-form">
-      <label for="username">Usuário</label>
-      <input type="text" id="username" name="username" required autofocus>
-
-      <label for="password">Senha</label>
-      <div class="password-wrap">
-        <input type="password" id="password" name="password" required>
-        <button type="button" id="toggle-password" aria-label="Exibir senha">Mostrar</button>
+      <label class="login-label" for="username">Usuário</label>
+      <div class="input-wrap">
+        <input type="text" id="username" name="username" required autofocus autocomplete="username">
       </div>
 
-      <button type="submit" id="btn-login" class="btn" style="width: 100%; margin-top: .8rem;">Entrar</button>
+      <label class="login-label" for="password">Senha</label>
+      <div class="password-wrap">
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+        <button type="button" id="toggle-password" aria-label="Exibir senha" title="Exibir senha">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M2 12C3.7 8.8 7.2 6 12 6C16.8 6 20.3 8.8 22 12C20.3 15.2 16.8 18 12 18C7.2 18 3.7 15.2 2 12Z" stroke="currentColor" stroke-width="1.7"/>
+            <circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.7"/>
+          </svg>
+        </button>
+      </div>
+
+      <button type="submit" id="btn-login" class="btn login-btn">Entrar</button>
+      <p class="login-footnote">Acesso restrito a administradores do sistema ARGOS.</p>
     </form>
   </div>
   <script>
@@ -41,8 +57,9 @@
     btnToggle.addEventListener("click", () => {
       const isHidden = passwordInput.type === "password";
       passwordInput.type = isHidden ? "text" : "password";
-      btnToggle.textContent = isHidden ? "Ocultar" : "Mostrar";
       btnToggle.setAttribute("aria-label", isHidden ? "Ocultar senha" : "Exibir senha");
+      btnToggle.setAttribute("title", isHidden ? "Ocultar senha" : "Exibir senha");
+      btnToggle.classList.toggle("is-open", isHidden);
     });
 
     document.getElementById("login-form").addEventListener("submit", async (e) => {
@@ -62,6 +79,8 @@
         });
 
         if (res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          if (payload?.username) sessionStorage.setItem("argosAdminUsername", payload.username);
           window.location.href = "/";
           return;
         }
