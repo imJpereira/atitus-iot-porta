@@ -170,3 +170,11 @@ def test_old_admin_key_rejected(app, monkeypatch, route):
     monkeypatch.setenv("ADMIN_API_KEY", "old-admin-key")
     response = app.test_client().get(route, headers={"X-API-Key": "old-admin-key"})
     assert response.status_code == 401
+
+
+def test_logout_revokes_protected_routes(app, admin):
+    web = app.test_client()
+    login(web)
+    assert web.get("/api/employees").status_code == 200
+    assert web.post("/api/auth/logout").status_code == 204
+    assert web.get("/api/employees").status_code == 401
