@@ -226,3 +226,9 @@ def test_forged_session_token_rejected(app, admin):
     with web.session_transaction() as session:
         session["sid"] = "not-a-real-token"
     assert web.get("/api/employees").status_code == 401
+
+
+def test_login_page_is_public(app):
+    response = app.test_client().get("/login")
+    assert response.status_code == 200
+    assert b"login-form" in response.data

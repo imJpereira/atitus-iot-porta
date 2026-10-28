@@ -77,6 +77,10 @@ def create_app(db_path=None):
     def index():
         return app.send_static_file("index.html")
 
+    @app.get("/login")
+    def login_page():
+        return app.send_static_file("login.html")
+
     @app.get("/api/health")
     def health():
         get_db().execute("SELECT 1")

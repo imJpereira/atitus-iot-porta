@@ -1,6 +1,25 @@
 body {
   font-family: system-ui, sans-serif;
   margin: 2rem auto;
-  max-width: 40rem;
+  max-width: 60rem;
   padding: 0 1rem;
 }
+
+header { display: flex; justify-content: space-between; align-items: center; }
+
+form { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .75rem; }
+label { display: flex; flex-direction: column; gap: .25rem; font-size: .9rem; }
+label.check { flex-direction: row; align-items: center; }
+input:not([type="checkbox"]) { padding: .4rem; border: 1px solid #ccc; border-radius: 4px; }
+input.invalid { border-color: #dc2626; outline: 2px solid #fecaca; }
+.actions { grid-column: 1 / -1; display: flex; gap: .5rem; }
+button { padding: .4rem .8rem; cursor: pointer; }
+
+.error { grid-column: 1 / -1; color: #dc2626; margin: 0; }
+
+table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
+th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #eee; }
+td button + button { margin-left: .25rem; }
+.ok { color: #15803d; }
+.denied { color: #dc2626; font-weight: 600; }
+tr.inactive { background: #fef2f2; }
