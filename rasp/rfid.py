@@ -58,6 +58,7 @@ def read_once(
 def run_reader_loop(
     on_tag: Callable[[str], None],
     *,
+    on_tick: Callable[[], object] | None = None,
     reader=None,
     debounce_seconds: float | None = None,
     poll_interval: float = 0.05,
@@ -81,6 +82,8 @@ def run_reader_loop(
             break
         if max_iterations is not None and iterations >= max_iterations:
             break
+        if on_tick is not None:
+            on_tick()
         read_once(reader, last_seen, debounce_seconds, on_tag=on_tag, clock=clock)
         iterations += 1
         if poll_interval > 0:
