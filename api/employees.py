@@ -19,9 +19,19 @@ def error(message: str, status: int):
     return jsonify(error=message), status
 
 
-def conflict(exc: sqlite3.IntegrityError):
+def conflict(exc: sqlite3.IntegrityError, fields: dict):
     # "UNIQUE constraint failed: employees.rfid_tag" -> "rfid_tag"
-    return error(f"{str(exc).rsplit('.', 1)[-1]} already exists", 409)
+    field = str(exc).rsplit(".", 1)[-1]
+    body = {"error": f"{field} already exists"}
+    if field == "rfid_tag":
+        # ponytail: owner can vanish between conflict and lookup; single admin, ignored
+        owner = get_db().execute(
+            "SELECT id, name, registration_id FROM employees WHERE rfid_tag = ?",
+            (fields["rfid_tag"],),
+        ).fetchone()
+        if owner:
+            body["owner"] = dict(owner)
+    return jsonify(body), 409
 
 
 def serialize(row: sqlite3.Row) -> dict:
@@ -74,7 +84,7 @@ def create_employee():
             list(fields.values()),
         )
     except sqlite3.IntegrityError as exc:
-        return conflict(exc)
+        return conflict(exc, fields)
     db.commit()
     row =db.execute("SELECT * FROM employees WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return jsonify(serialize(row)), 201
@@ -117,7 +127,7 @@ def update_employee(employee_id: int):
             [*fields.values(), employee_id],
         )
     except sqlite3.IntegrityError as exc:
-        return conflict(exc)
+        return conflict(exc, fields)
     db.commit()
     return jsonify(serialize(find_employee(employee_id)))
 
