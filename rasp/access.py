@@ -495,3 +495,8 @@ def run_access_loop(*, controller: AccessController | None = None, env_path: Pat
     if controller is None:
         controller = AccessController(env_path=env_path)
     run_reader_loop(controller.handle_tag, on_tick=controller.maybe_sync, env_path=env_path, **loop_kwargs)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    run_access_loop()
