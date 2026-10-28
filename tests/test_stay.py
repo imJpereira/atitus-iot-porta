@@ -194,3 +194,13 @@ def test_requires_admin(client):
     # `client` carries the Pi key but no admin session
     assert stay(client, date="2026-10-28").status_code == 401
     assert client.get("/api/stay", headers={"X-API-Key": ""}).status_code == 401
+
+
+def test_same_timestamp_exit_inserted_first_is_orphan(admin_client):
+    make_employee(admin_client, "AA:01", "R1")
+    make_employee(admin_client, "AA:02", "R2", name="Bia")
+    send(admin_client, "saida", "2026-10-28T12:00:00Z")
+    send(admin_client, "entrada", "2026-10-28T12:00:00Z", tag="AA:02")
+    send(admin_client, "entrada", "2026-10-28T12:00:00Z")
+    sessions = stay(admin_client, date="2026-10-28").get_json()["employees"][0]["sessions"]
+    assert sessions == [open_("2026-10-28T12:00:00Z")]
