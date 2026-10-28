@@ -18,6 +18,7 @@ LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DEFAULT_API_BASE_URL = "http://127.0.0.1:5000"
 SOURCE = "raspberry_pi"
+DEFAULT_STATE_PATH = ROOT / "data" / "rasp_state.json"
 
 PATTERNS: dict[str, tuple[tuple[tuple[str, ...], float, float], ...]] = {
     "first_entry": (
@@ -60,6 +61,7 @@ def classify_access(
     tag: str,
     employees_by_tag: dict[str, dict],
     entered_today: set[str],
+    inside: set[str] | None = None,
 ) -> tuple[str, str, str]:
     employee = employees_by_tag.get(tag)
     if employee is None:
@@ -68,6 +70,12 @@ def classify_access(
     name = employee["name"]
     if not employee.get("is_active") or not employee.get("has_room_access"):
         return "access_denied", "acesso_negado", f"Acesso negado, {name}"
+
+    if inside is not None:
+        if tag in inside:
+            inside.remove(tag)
+            return "return_entry", "saida", f"Até logo, {name}"
+        inside.add(tag)
 
     if tag not in entered_today:
         entered_today.add(tag)
@@ -175,8 +183,10 @@ class AccessController:
         display: Callable[[str], None] = print,
         sender: Callable[[dict[str, str]], object] | None = None,
         env_path: Path = ROOT / ".env",
+        state_path: Path | None = DEFAULT_STATE_PATH,
     ) -> None:
         self.env_path = env_path
+        self.state_path = state_path
         self.pins = pins if pins is not None else get_pins(env_path)
         self.gpio = gpio
         self.clock = clock
@@ -186,6 +196,32 @@ class AccessController:
         self.employees_by_tag = index_employees(employees or [])
         self.current_date: str | None = None
         self.entered_today: set[str] = set()
+        self.inside: set[str] = set()
+        self._load_state()
+
+    def _load_state(self) -> None:
+        if self.state_path is None or not self.state_path.is_file():
+            return
+        try:
+            data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.warning("Arquivo de estado inválido em %s; iniciando limpo", self.state_path)
+            return
+        if isinstance(data, dict) and isinstance(data.get("date"), str):
+            self.current_date = data["date"]
+            self.entered_today = {t for raw in data.get("entered_today", []) if (t := normalize_uid(raw))}
+            self.inside = {t for raw in data.get("inside", []) if (t := normalize_uid(raw))}
+
+    def _save_state(self) -> None:
+        if self.state_path is None:
+            return
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "date": self.current_date,
+            "entered_today": sorted(self.entered_today),
+            "inside": sorted(self.inside),
+        }
+        self.state_path.write_text(json.dumps(payload), encoding="utf-8")
 
     def update_employees(self, employees: list[dict]) -> None:
         self.employees_by_tag = index_employees(employees)
@@ -200,8 +236,12 @@ class AccessController:
         if day != self.current_date:
             self.current_date = day
             self.entered_today.clear()
+            self.inside.clear()
 
-        case, event_type, message = classify_access(tag, self.employees_by_tag, self.entered_today)
+        case, event_type, message = classify_access(
+            tag, self.employees_by_tag, self.entered_today, self.inside
+        )
+        self._save_state()
         self.display(message)
         emit_feedback(case, gpio=self.gpio, pins=self.pins, sleep=self.sleep, env_path=self.env_path)
         event = build_event(tag, event_type, moment)

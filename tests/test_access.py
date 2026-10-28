@@ -35,6 +35,7 @@ def test_four_cases_messages_events_and_distinct_gpio_patterns(monkeypatch, tmp_
     clear_pin_env(monkeypatch)
     moments = [
         datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 10, 28, 13, 0, 0, tzinfo=timezone.utc),
         datetime(2026, 10, 28, 15, 0, 0, tzinfo=timezone.utc),
         datetime(2026, 10, 28, 16, 0, 0, tzinfo=timezone.utc),
         datetime(2026, 10, 28, 17, 0, 0, tzinfo=timezone.utc),
@@ -52,6 +53,7 @@ def test_four_cases_messages_events_and_distinct_gpio_patterns(monkeypatch, tmp_
         display=messages.append,
         sender=sent_events.append,
         env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
     )
 
     # Caso 1: primeira entrada do dia
@@ -65,7 +67,13 @@ def test_four_cases_messages_events_and_distinct_gpio_patterns(monkeypatch, tmp_
     p1 = outputs_for(gpio)
     gpio.events.clear()
 
-    # Caso 2: já entrou no dia -> retorno
+    # Saída intermediária para permitir retorno no mesmo dia
+    r_exit = controller.handle_tag("TAG-ATIVA")
+    assert r_exit["event"]["type"] == "saida"
+    assert r_exit["message"] == "Até logo, Ana Silva"
+    gpio.events.clear()
+
+    # Caso 2: já entrou no dia e estava fora -> retorno
     r2 = controller.handle_tag("TAG-ATIVA")
     assert r2["case"] == "return_entry"
     assert r2["message"] == "Bem-vindo de volta, Ana Silva"
@@ -104,9 +112,10 @@ def test_four_cases_messages_events_and_distinct_gpio_patterns(monkeypatch, tmp_
     assert p3.count((16, 1)) == 2 and p3.count((14, 1)) == 2  # Amarelo + Buzzer (2 pulsos)
     assert p4.count((21, 1)) == 3 and p4.count((14, 1)) == 3  # Vermelho + Buzzer (3 pulsos)
 
-    assert len(sent_events) == 5
+    assert len(sent_events) == 6
     assert messages == [
         "Bem-vindo, Ana Silva",
+        "Até logo, Ana Silva",
         "Bem-vindo de volta, Ana Silva",
         "Acesso negado, Bruno Costa",
         "Acesso negado, Carlos Souza",
@@ -120,6 +129,7 @@ def test_first_entry_rule_uses_local_date_and_resets_next_day(monkeypatch, tmp_p
     # 2026-10-29 00:10 em America/Sao_Paulo = 2026-10-29 03:10Z (virou para dia 29 local)
     moments = [
         datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 10, 28, 18, 0, 0, tzinfo=timezone.utc),
         datetime(2026, 10, 29, 2, 30, 0, tzinfo=timezone.utc),
         datetime(2026, 10, 29, 3, 10, 0, tzinfo=timezone.utc),
     ]
@@ -131,16 +141,118 @@ def test_first_entry_rule_uses_local_date_and_resets_next_day(monkeypatch, tmp_p
         display=lambda _: None,
         sender=lambda _: None,
         env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
     )
 
     first = controller.handle_tag("TAG-ATIVA")
+    exit_same_day = controller.handle_tag("TAG-ATIVA")
     same_local_day = controller.handle_tag("TAG-ATIVA")
     next_local_day = controller.handle_tag("TAG-ATIVA")
 
     assert first["case"] == "first_entry"
+    assert exit_same_day["event"]["type"] == "saida"
     assert same_local_day["case"] == "return_entry"
+    assert same_local_day["event"]["type"] == "entrada"
+    # Na virada do dia, quem ainda constava dentro (depois de same_local_day) volta para fora
     assert next_local_day["case"] == "first_entry"
+    assert next_local_day["event"]["type"] == "entrada"
     assert next_local_day["message"] == "Bem-vindo, Ana Silva"
+
+
+def test_multiple_sessions_and_day_rollover_reset(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    moments = [
+        datetime(2026, 10, 28, 11, 0, 0, tzinfo=timezone.utc),  # sessão 1: entrada
+        datetime(2026, 10, 28, 15, 0, 0, tzinfo=timezone.utc),  # sessão 1: saída
+        datetime(2026, 10, 28, 16, 0, 0, tzinfo=timezone.utc),  # sessão 2: entrada
+        datetime(2026, 10, 28, 20, 0, 0, tzinfo=timezone.utc),  # sessão 2: saída
+        datetime(2026, 10, 28, 22, 0, 0, tzinfo=timezone.utc),  # sessão 3: entrada (fica dentro)
+        datetime(2026, 10, 29, 12, 0, 0, tzinfo=timezone.utc),  # dia seguinte: reinicia fora -> entrada
+    ]
+    events: list[dict] = []
+    controller = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: moments.pop(0),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=events.append,
+        env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
+    )
+
+    for _ in range(5):
+        controller.handle_tag("TAG-ATIVA")
+    assert "TAG-ATIVA" in controller.inside
+
+    # Virou o dia com colaborador dentro -> reinicia para fora e registra nova entrada
+    r_next_day = controller.handle_tag("TAG-ATIVA")
+    assert r_next_day["event"]["type"] == "entrada"
+    assert r_next_day["case"] == "first_entry"
+    assert "TAG-ATIVA" in controller.inside
+
+    assert [e["type"] for e in events] == [
+        "entrada",
+        "saida",
+        "entrada",
+        "saida",
+        "entrada",
+        "entrada",
+    ]
+
+
+def test_persisted_state_recovers_after_restart(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    state_file = tmp_path / "rasp_state.json"
+    env_file = tmp_path / "no.env"
+
+    # 1ª instância: Ana entra e permanece dentro
+    c1 = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=lambda _: None,
+        env_path=env_file,
+        state_path=state_file,
+    )
+    r1 = c1.handle_tag("TAG-ATIVA")
+    assert r1["event"]["type"] == "entrada"
+    assert state_file.is_file()
+
+    # 2ª instância (simulando reinício da Pi no mesmo dia): recupera que Ana está dentro
+    c2 = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: datetime(2026, 10, 28, 14, 0, 0, tzinfo=timezone.utc),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=lambda _: None,
+        env_path=env_file,
+        state_path=state_file,
+    )
+    assert "TAG-ATIVA" in c2.inside
+    r2 = c2.handle_tag("TAG-ATIVA")
+    assert r2["event"]["type"] == "saida"
+    assert "TAG-ATIVA" not in c2.inside
+
+    # 3ª instância (reinício ainda no mesmo dia após saída): próxima leitura é reentrada ("return_entry")
+    c3 = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: datetime(2026, 10, 28, 16, 0, 0, tzinfo=timezone.utc),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=lambda _: None,
+        env_path=env_file,
+        state_path=state_file,
+    )
+    assert "TAG-ATIVA" not in c3.inside
+    assert "TAG-ATIVA" in c3.entered_today
+    r3 = c3.handle_tag("TAG-ATIVA")
+    assert r3["event"]["type"] == "entrada"
+    assert r3["case"] == "return_entry"
 
 
 def test_gpio_pins_configurable_by_env(monkeypatch, tmp_path):
@@ -213,6 +325,7 @@ def test_run_access_loop_integrates_with_rfid_reader(monkeypatch, tmp_path):
         display=lambda _: None,
         sender=sent.append,
         env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
     )
 
     run_access_loop(
