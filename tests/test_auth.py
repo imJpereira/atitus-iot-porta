@@ -19,9 +19,10 @@ def test_login_ok_sets_session(app, admin):
     anon = app.test_client()
     response = login(anon)
     assert response.status_code == 200
+    assert response.get_json() == {"username": ADMIN_USER}
     assert "session=" in response.headers["Set-Cookie"]
     with anon.session_transaction() as session:
-        assert "admin_id" in session
+        assert session["admin_id"] == 1
 
 
 def test_wrong_password_401_without_cookie(app, admin):
@@ -178,3 +179,19 @@ def test_logout_revokes_protected_routes(app, admin):
     assert web.get("/api/employees").status_code == 200
     assert web.post("/api/auth/logout").status_code == 204
     assert web.get("/api/employees").status_code == 401
+
+
+def test_unknown_user_with_dummy_password_still_401(app, admin):
+    response = login(app.test_client(), username="ghost", password="dummy")
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "invalid credentials"}
+
+
+def test_login_discards_previous_session_data(app, admin):
+    web = app.test_client()
+    with web.session_transaction() as session:
+        session["junk"] = 1
+    login(web)
+    with web.session_transaction() as session:
+        assert "junk" not in session
+
