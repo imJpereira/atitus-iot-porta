@@ -51,7 +51,10 @@ def create_app(db_path=None):
     app = Flask(__name__, static_folder=str(ROOT / "web"), static_url_path="")
     app.secret_key = os.environ.get("SECRET_KEY")
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    app.config["DATABASE"] = Path(db_path or ROOT / "data" / "app.db")
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_SECURE") == "1"
+    app.config["DATABASE"] = Path(
+        db_path or os.environ.get("DATABASE_PATH") or ROOT / "data" / "app.db"
+    )
     app.config["DATABASE"].parent.mkdir(exist_ok=True)
     migrate(app.config["DATABASE"])
 

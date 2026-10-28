@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: atitus-iot-porta
+    runtime: python
+    plan: starter  # Disk exige plano pago; no free o SQLite some a cada restart
+    buildCommand: pip install uv && uv sync --frozen
+    startCommand: uv run gunicorn "api:create_app()" --bind 0.0.0.0:$PORT --workers 1
+    healthCheckPath: /api/health
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.14"
+      - key: DATABASE_PATH
+        value: /var/data/app.db
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PI_API_KEY
+        sync: false
