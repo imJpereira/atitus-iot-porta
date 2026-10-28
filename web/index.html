@@ -23,12 +23,51 @@
         </div>
       </div>
       <nav class="menu" aria-label="Menu principal">
-        <button class="menu-item is-active" data-view="dashboard">Início</button>
-        <button class="menu-item" data-view="monitoring">Monitoramento</button>
-        <button class="menu-item" data-view="employees">Colaboradores</button>
-        <button class="menu-item" data-view="logs">Logs de acesso</button>
-        <button class="menu-item" data-view="reports">Relatórios</button>
-        <button class="menu-item" data-view="devices">Dispositivos</button>
+        <button class="menu-item is-active" data-view="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 10.5L12 4L20 10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 10V19H17V10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Início</span>
+        </button>
+        <button class="menu-item" data-view="monitoring">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="4" y="5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M10 19H14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>Monitoramento</span>
+        </button>
+        <button class="menu-item" data-view="employees">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="9" cy="9" r="2.7" stroke="currentColor" stroke-width="1.8"/>
+            <circle cx="16.2" cy="10.5" r="2.1" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M4.8 19C5.4 16.5 7.2 15.2 9.8 15.2C12.4 15.2 14.2 16.5 14.8 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>Colaboradores</span>
+        </button>
+        <button class="menu-item" data-view="logs">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M7 3H14L19 8V20H7V3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M14 3V8H19" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M10 12H16M10 15H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>Logs de acesso</span>
+        </button>
+        <button class="menu-item" data-view="reports">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M7 3H14L19 8V20H7V3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M14 3V8H19" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M10 14H16M10 17H13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>Relatórios</span>
+        </button>
+        <button class="menu-item" data-view="devices">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="6" y="6" width="12" height="12" rx="3" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M12 2V5M12 19V22M2 12H5M19 12H22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>Dispositivos</span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <button id="btn-session-card" class="session-card session-trigger" type="button" aria-expanded="false" aria-controls="session-popover">
@@ -56,11 +95,26 @@
     <main class="content">
       <header class="topbar">
         <button id="btn-menu" class="btn btn-ghost mobile-only" type="button" aria-label="Abrir menu">Menu</button>
-        <div>
+        <div class="topbar-heading">
           <h1 id="page-title">Início</h1>
           <p id="page-subtitle" class="muted">Visão geral operacional do ARGOS.</p>
         </div>
-        <p id="global-status" class="status-badge status-neutral">Aguardando atualização</p>
+        <div class="topbar-meta">
+          <div class="topbar-right">
+            <div class="topbar-datetime" aria-live="polite">
+              <small id="topbar-date">--</small>
+              <strong id="topbar-time">--</strong>
+            </div>
+            <button id="btn-notifications" class="icon-btn" type="button" aria-label="Abrir alertas">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 9.5C6 6.5 8.3 4 11.2 4C14.1 4 16.4 6.5 16.4 9.5V12.2C16.4 13.3 16.8 14.4 17.6 15.2L18.4 16H4L4.8 15.2C5.6 14.4 6 13.3 6 12.2V9.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                <path d="M9.3 18.6C9.7 19.7 10.6 20.3 11.7 20.3C12.8 20.3 13.7 19.7 14.1 18.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+              <span id="notification-dot" class="notification-dot" hidden>0</span>
+            </button>
+          </div>
+          <p id="global-status" class="status-badge status-neutral">Aguardando atualização</p>
+        </div>
       </header>
 
       <section class="view is-active" data-view="dashboard">
@@ -84,6 +138,25 @@
           <article class="card metric-card">
             <h2>Tentativas de invasão (24h)</h2>
             <strong id="metric-intrusion">0</strong>
+          </article>
+        </div>
+        <div class="split-grid dashboard-operational-grid">
+          <article class="card">
+            <div class="card-title-row">
+              <h2>Movimentação nas últimas 24h</h2>
+              <div class="dashboard-legend">
+                <span><i class="legend-dot legend-entry"></i> Entradas</span>
+                <span><i class="legend-dot legend-exit"></i> Saídas</span>
+              </div>
+            </div>
+            <div id="dashboard-timeline" class="dashboard-timeline"></div>
+            <p id="dashboard-timeline-empty" class="empty-state" hidden>Sem eventos suficientes para montar a timeline.</p>
+          </article>
+          <article class="card dashboard-room-card">
+            <h2>Status da sala</h2>
+            <p id="dashboard-room-status" class="status-badge status-success">Operação normal</p>
+            <p id="dashboard-room-details" class="muted">Sem incidentes críticos recentes.</p>
+            <p id="dashboard-room-last-event" class="muted">Último evento: —</p>
           </article>
         </div>
         <div class="split-grid">
@@ -115,8 +188,8 @@
         </div>
       </section>
 
-      <section class="view" data-view="monitoring">
-        <article class="card">
+      <section class="view monitoring-view" data-view="monitoring">
+        <article class="card monitor-main-card">
           <div class="card-title-row">
             <h2>Movimentações em tempo real</h2>
             <div class="inline-actions">
@@ -124,20 +197,25 @@
               <button id="btn-refresh-monitoring" type="button" class="btn btn-ghost">Atualizar agora</button>
             </div>
           </div>
-          <div class="chips-row">
+          <div class="monitor-toolbar">
+            <span class="monitor-pill is-active">Eventos em tempo real</span>
+            <span class="monitor-pill">Pessoas na sala (<strong id="monitoring-inside-pill">0</strong>)</span>
+            <span class="monitor-pill">Alertas recentes (<strong id="monitoring-alerts-pill">0</strong>)</span>
+          </div>
+          <div class="chips-row monitor-summary-row">
             <span class="chip">Dentro da sala: <strong id="monitoring-inside-count">0</strong></span>
             <span class="chip">Atualização automática: <strong>5s</strong></span>
           </div>
           <p id="monitoring-error" class="feedback error" hidden></p>
-          <div class="table-wrap">
-            <table>
+          <div class="table-wrap monitor-table-wrap">
+            <table class="monitoring-table">
               <thead>
                 <tr>
                   <th>Horário</th>
                   <th>Tipo</th>
                   <th>Colaborador / TAG</th>
                   <th>Status</th>
-                  <th>Origem</th>
+                  <th>Detalhes</th>
                 </tr>
               </thead>
               <tbody id="monitoring-events-body"></tbody>
@@ -145,7 +223,7 @@
           </div>
           <p id="monitoring-empty" class="empty-state" hidden>Nenhum evento registrado.</p>
         </article>
-        <div class="split-grid">
+        <div class="split-grid monitoring-secondary">
           <article class="card">
             <h2>Pessoas atualmente na sala</h2>
             <ul id="inside-list" class="simple-list"></ul>
@@ -184,13 +262,22 @@
             </div>
 
             <div class="checks-row field-group-wide">
-              <label class="inline-check"><input type="checkbox" name="has_room_access"> Acesso à sala</label>
-              <label class="inline-check"><input type="checkbox" name="is_active" checked> Colaborador ativo</label>
+              <label class="inline-check switch-check">
+                <input type="checkbox" name="has_room_access">
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span>Acesso à sala</span>
+              </label>
+              <label class="inline-check switch-check">
+                <input type="checkbox" name="is_active" checked>
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span>Ativo</span>
+              </label>
             </div>
 
             <p id="employee-form-feedback" class="feedback error field-group-wide" hidden></p>
             <div class="inline-actions field-group-wide">
               <button type="submit" id="btn-employee-submit" class="btn">Cadastrar</button>
+              <button type="button" id="btn-employee-clear" class="btn btn-ghost">Limpar</button>
               <button type="button" id="btn-employee-cancel" class="btn btn-ghost" hidden>Cancelar edição</button>
             </div>
           </form>
@@ -359,7 +446,16 @@
         </div>
         <div class="split-grid">
           <article class="card">
-            <h2>Movimentação por hora</h2>
+            <div class="card-title-row">
+              <h2>Movimentação</h2>
+              <div class="field-group compact-field">
+                <label for="report-grouping">Agrupar por</label>
+                <select id="report-grouping">
+                  <option value="hour">Hora</option>
+                  <option value="30min">30 min</option>
+                </select>
+              </div>
+            </div>
             <div id="report-chart" class="bars-chart"></div>
             <p id="report-chart-empty" class="empty-state" hidden>Sem eventos para montar o gráfico.</p>
           </article>

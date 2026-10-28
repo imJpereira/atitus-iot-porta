@@ -5,6 +5,37 @@ const EVENT_LABEL = {
   tentativa_invasao: "Tentativa de invasão",
 };
 
+const localPreviewEnabled = new URLSearchParams(location.search).get("preview") === "1";
+
+function isoMinutesAgo(minutesAgo) {
+  return new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
+}
+
+function createLocalPreviewData() {
+  const employees = [
+    { id: 1, name: "João Silva", registration_id: "MAT-004", role: "Desenvolvedor", rfid_tag: "RFID004", has_room_access: true, is_active: true },
+    { id: 2, name: "Marina Costa", registration_id: "MAT-005", role: "Analista de Segurança", rfid_tag: "RFID005", has_room_access: true, is_active: true },
+    { id: 3, name: "Lucas Almeida", registration_id: "MAT-006", role: "Suporte Técnico", rfid_tag: "RFID006", has_room_access: false, is_active: true },
+    { id: 4, name: "Ana Ferreira", registration_id: "MAT-007", role: "Designer 3D", rfid_tag: "RFID007", has_room_access: true, is_active: true },
+    { id: 5, name: "Pedro Martins", registration_id: "MAT-008", role: "Analista de TI", rfid_tag: "RFID008", has_room_access: false, is_active: true },
+    { id: 6, name: "Beatriz Souza", registration_id: "MAT-009", role: "Desenvolvedora", rfid_tag: "RFID009", has_room_access: true, is_active: false },
+    { id: 7, name: "Rafael Mendes", registration_id: "MAT-010", role: "Coordenador de Projetos", rfid_tag: "RFID010", has_room_access: true, is_active: true },
+    { id: 8, name: "Juliana Rocha", registration_id: "MAT-011", role: "Estagiária de TI", rfid_tag: "RFID011", has_room_access: false, is_active: true },
+  ];
+  const events = [
+    { id: 1, employee_id: 1, employee_name: "João Silva", rfid_tag: "RFID004", type: "entrada", source: "rfid-gate", timestamp: isoMinutesAgo(95) },
+    { id: 2, employee_id: 2, employee_name: "Marina Costa", rfid_tag: "RFID005", type: "entrada", source: "rfid-gate", timestamp: isoMinutesAgo(82) },
+    { id: 3, employee_id: 3, employee_name: "Lucas Almeida", rfid_tag: "RFID006", type: "acesso_negado", source: "rfid-gate", timestamp: isoMinutesAgo(78) },
+    { id: 4, employee_id: 5, employee_name: "Pedro Martins", rfid_tag: "RFID008", type: "acesso_negado", source: "rfid-gate", timestamp: isoMinutesAgo(67) },
+    { id: 5, employee_id: null, employee_name: null, rfid_tag: "RFID999", type: "tentativa_invasao", source: "rfid-gate", timestamp: isoMinutesAgo(55) },
+    { id: 6, employee_id: 1, employee_name: "João Silva", rfid_tag: "RFID004", type: "saida", source: "rfid-gate", timestamp: isoMinutesAgo(40) },
+    { id: 7, employee_id: 2, employee_name: "Marina Costa", rfid_tag: "RFID005", type: "saida", source: "rfid-gate", timestamp: isoMinutesAgo(24) },
+    { id: 8, employee_id: 7, employee_name: "Rafael Mendes", rfid_tag: "RFID010", type: "entrada", source: "rfid-gate", timestamp: isoMinutesAgo(14) },
+    { id: 9, employee_id: 4, employee_name: "Ana Ferreira", rfid_tag: "RFID007", type: "entrada", source: "rfid-gate", timestamp: isoMinutesAgo(7) },
+  ];
+  return { employees, events };
+}
+
 const state = {
   currentView: "dashboard",
   employees: [],
@@ -12,7 +43,10 @@ const state = {
   logs: { offset: 0, limit: 20, total: 0, rows: [] },
   isRefreshing: { dashboard: false, monitoring: false, logs: false, reports: false, devices: false },
   pollTimer: null,
+  clockTimer: null,
   reportsCache: [],
+  localPreview: localPreviewEnabled ? createLocalPreviewData() : null,
+  notificationsCount: 0,
 };
 
 const employeeForm = document.getElementById("employee-form");
@@ -116,6 +150,37 @@ function setGlobalStatus(text, kind) {
   setStatusBadge("global-status", text, kind);
 }
 
+function updateTopbarClock() {
+  const now = new Date();
+  const dateLabel = now.toLocaleDateString("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const timeLabel = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  setText("topbar-date", dateLabel.replace(/\./g, ""));
+  setText("topbar-time", timeLabel);
+}
+
+function startTopbarClock() {
+  updateTopbarClock();
+  if (state.clockTimer) clearInterval(state.clockTimer);
+  state.clockTimer = setInterval(updateTopbarClock, 1000);
+}
+
+function setNotificationsCount(count) {
+  state.notificationsCount = Math.max(0, Number(count || 0));
+  const dot = document.getElementById("notification-dot");
+  const button = document.getElementById("btn-notifications");
+  if (!dot || !button) return;
+  const labelCount = state.notificationsCount > 99 ? "99+" : String(state.notificationsCount);
+  dot.textContent = labelCount;
+  dot.hidden = state.notificationsCount === 0;
+  const suffix = state.notificationsCount ? ` (${state.notificationsCount})` : "";
+  button.setAttribute("aria-label", `Abrir alertas${suffix}`);
+}
+
 function formatDateTime(isoDate) {
   if (!isoDate) return "—";
   const date = new Date(isoDate);
@@ -155,6 +220,31 @@ function eventResult(type) {
   return '<span class="result-danger">Incidente</span>';
 }
 
+function monitoringType(type) {
+  const map = {
+    entrada: { label: "Entrada", icon: "↑" },
+    saida: { label: "Saída", icon: "↓" },
+    acesso_negado: { label: "Negado", icon: "✕" },
+    tentativa_invasao: { label: "Invasão", icon: "⚠" },
+  };
+  const current = map[type] || { label: type, icon: "•" };
+  return `<span class="monitor-type monitor-type-${escapeHtml(type)}"><span class="monitor-type-icon">${escapeHtml(current.icon)}</span>${escapeHtml(current.label)}</span>`;
+}
+
+function monitoringStatus(type) {
+  if (type === "entrada") return '<span class="monitor-status monitor-status-ok">Autorizado</span>';
+  if (type === "saida") return '<span class="monitor-status monitor-status-regular">Registrado</span>';
+  if (type === "acesso_negado") return '<span class="monitor-status monitor-status-warn">Negado</span>';
+  return '<span class="monitor-status monitor-status-danger">Bloqueado</span>';
+}
+
+function monitoringDetails(event) {
+  if (event.type === "entrada") return "Acesso à sala";
+  if (event.type === "saida") return "Saída da sala";
+  if (event.type === "acesso_negado") return "Sem permissão";
+  return `Tentativa de invasão${event.rfid_tag ? ` (${event.rfid_tag})` : ""}`;
+}
+
 async function api(url, opts = {}) {
   const request = {
     ...opts,
@@ -186,6 +276,84 @@ function employeeById(employeeId) {
   return state.employees.find((employee) => employee.id === employeeId) || null;
 }
 
+function localPreviewEvents(params = {}) {
+  if (!state.localPreview) return { rows: [], total: 0 };
+  const fromTime = params.from ? new Date(params.from).getTime() : null;
+  const toTime = params.to ? new Date(params.to).getTime() : null;
+  let rows = [...state.localPreview.events].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  rows = rows.filter((event) => {
+    const eventTime = new Date(event.timestamp).getTime();
+    if (Number.isFinite(fromTime) && eventTime < fromTime) return false;
+    if (Number.isFinite(toTime) && eventTime > toTime) return false;
+    if (params.type && event.type !== params.type) return false;
+    if (params.employee_id && String(event.employee_id) !== String(params.employee_id)) return false;
+    return true;
+  });
+  const total = rows.length;
+  const limit = Number(params.limit || total || 0);
+  const offset = Number(params.offset || 0);
+  if (Number.isFinite(limit) && limit > 0) {
+    rows = rows.slice(offset, offset + limit);
+  } else if (offset > 0) {
+    rows = rows.slice(offset);
+  }
+  return { rows, total };
+}
+
+function localPreviewInside() {
+  if (!state.localPreview) return [];
+  const lastByEmployee = new Map();
+  [...state.localPreview.events]
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+    .forEach((event) => {
+      if (!event.employee_id) return;
+      if (event.type === "entrada" || event.type === "saida") {
+        lastByEmployee.set(event.employee_id, event.type);
+      }
+    });
+  return state.localPreview.employees.filter((employee) => lastByEmployee.get(employee.id) === "entrada");
+}
+
+function localPreviewStay(date) {
+  if (!state.localPreview || !date) return { date, employees: [] };
+  const dayStart = new Date(`${date}T00:00:00`);
+  const dayEnd = new Date(`${date}T23:59:59.999`);
+  if (Number.isNaN(dayStart.getTime()) || Number.isNaN(dayEnd.getTime())) return { date, employees: [] };
+
+  const rows = state.localPreview.employees.map((employee) => {
+    const employeeEvents = state.localPreview.events
+      .filter((event) => event.employee_id === employee.id)
+      .filter((event) => {
+        const t = new Date(event.timestamp).getTime();
+        return t >= dayStart.getTime() && t <= dayEnd.getTime();
+      })
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    const sessions = [];
+    let openEntry = null;
+    employeeEvents.forEach((event) => {
+      if (event.type === "entrada") openEntry = event.timestamp;
+      if (event.type === "saida" && openEntry) {
+        sessions.push({ entrada: openEntry, saida: event.timestamp });
+        openEntry = null;
+      }
+    });
+    if (openEntry) sessions.push({ entrada: openEntry, sem_saida: true });
+
+    const total_seconds = sessions.reduce((acc, session) => {
+      if (session.sem_saida) return acc;
+      const inTs = new Date(session.entrada).getTime();
+      const outTs = new Date(session.saida).getTime();
+      if (Number.isNaN(inTs) || Number.isNaN(outTs) || outTs < inTs) return acc;
+      return acc + Math.floor((outTs - inTs) / 1000);
+    }, 0);
+
+    return { id: employee.id, name: employee.name, total_seconds, sessions };
+  });
+
+  return { date, employees: rows.filter((row) => row.sessions.length > 0) };
+}
+
 function eventActor(event) {
   const employee = employeeById(event.employee_id);
   if (event.employee_name || employee) {
@@ -207,11 +375,13 @@ function buildEventsQuery(params = {}) {
 }
 
 async function fetchEvents(params = {}) {
+  if (state.localPreview) return localPreviewEvents(params);
   const { data, headers } = await api(`/api/events${buildEventsQuery(params)}`);
   return { rows: Array.isArray(data) ? data : [], total: Number(headers.get("X-Total-Count") || 0) };
 }
 
 async function fetchInside() {
+  if (state.localPreview) return localPreviewInside();
   const { data } = await api("/api/events/inside");
   return Array.isArray(data) ? data : [];
 }
@@ -259,6 +429,73 @@ function renderAlerts(targetId, emptyId, alerts) {
   document.getElementById(emptyId).hidden = alerts.length > 0;
 }
 
+function renderDashboardTimeline(events) {
+  const target = document.getElementById("dashboard-timeline");
+  const empty = document.getElementById("dashboard-timeline-empty");
+  if (!target || !empty) return;
+
+  const perHour = new Map();
+  events.forEach((event) => {
+    if (event.type !== "entrada" && event.type !== "saida") return;
+    const date = new Date(event.timestamp);
+    if (Number.isNaN(date.getTime())) return;
+    const hour = String(date.getHours()).padStart(2, "0");
+    if (!perHour.has(hour)) perHour.set(hour, { entrada: 0, saida: 0 });
+    perHour.get(hour)[event.type] += 1;
+  });
+
+  const hours = [...perHour.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  if (!hours.length) {
+    target.innerHTML = "";
+    empty.hidden = false;
+    return;
+  }
+
+  empty.hidden = true;
+  const peak = Math.max(...hours.map(([, values]) => values.entrada + values.saida), 1);
+  target.innerHTML = hours
+    .map(([hour, values]) => {
+      const inHeight = values.entrada ? Math.max(8, Math.round((values.entrada / peak) * 100)) : 0;
+      const outHeight = values.saida ? Math.max(8, Math.round((values.saida / peak) * 100)) : 0;
+      return `
+      <div class="timeline-col" title="${hour}h: ${values.entrada} entrada(s), ${values.saida} saída(s)">
+        <div class="timeline-bars">
+          <div class="timeline-bar timeline-bar-entry" style="height:${inHeight}%"></div>
+          <div class="timeline-bar timeline-bar-exit" style="height:${outHeight}%"></div>
+        </div>
+        <small>${hour}h</small>
+      </div>
+    `;
+    })
+    .join("");
+}
+
+function renderDashboardRoomStatus(events, insideRows, counts) {
+  const status = document.getElementById("dashboard-room-status");
+  const details = document.getElementById("dashboard-room-details");
+  const lastEvent = document.getElementById("dashboard-room-last-event");
+  if (!status || !details || !lastEvent) return;
+
+  const latest = events[0];
+  lastEvent.textContent = `Último evento: ${latest ? formatDateTime(latest.timestamp) : "—"}`;
+
+  if (counts.tentativa_invasao > 0) {
+    status.className = "status-badge status-error";
+    status.textContent = "Incidente crítico";
+    details.textContent = `${counts.tentativa_invasao} tentativa(s) de invasão no período.`;
+    return;
+  }
+  if (counts.acesso_negado > 0) {
+    status.className = "status-badge status-warning";
+    status.textContent = "Atenção";
+    details.textContent = `${counts.acesso_negado} acesso(s) negado(s) no período.`;
+    return;
+  }
+  status.className = "status-badge status-success";
+  status.textContent = "Operação normal";
+  details.textContent = `${insideRows.length} pessoa(s) na sala e sem incidentes críticos recentes.`;
+}
+
 async function refreshDashboard() {
   if (state.isRefreshing.dashboard) return;
   state.isRefreshing.dashboard = true;
@@ -277,9 +514,13 @@ async function refreshDashboard() {
     setText("metric-intrusion", String(counts.tentativa_invasao));
 
     const recent = eventsResponse.rows.slice(0, 8);
+    renderDashboardTimeline(eventsResponse.rows);
+    renderDashboardRoomStatus(eventsResponse.rows, insideRows, counts);
     renderRecentEvents("dashboard-events-body", recent);
     document.getElementById("dashboard-events-empty").hidden = recent.length > 0;
-    renderAlerts("dashboard-alerts", "dashboard-alerts-empty", recentAlerts(eventsResponse.rows));
+    const alerts = recentAlerts(eventsResponse.rows);
+    renderAlerts("dashboard-alerts", "dashboard-alerts-empty", alerts);
+    setNotificationsCount(alerts.length);
     setGlobalStatus("Dashboard atualizado", "status-success");
   } catch (error) {
     setGlobalStatus(`Falha no dashboard: ${error.message}`, "status-error");
@@ -295,23 +536,27 @@ function renderMonitoring(events, insideRows) {
       (event) => `
       <tr>
         <td>${formatDateTime(event.timestamp)}</td>
-        <td>${eventBadge(event.type)}</td>
+        <td>${monitoringType(event.type)}</td>
         <td>${escapeHtml(eventActor(event))}</td>
-        <td>${eventResult(event.type)}</td>
-        <td>${escapeHtml(event.source || "—")}</td>
+        <td>${monitoringStatus(event.type)}</td>
+        <td>${escapeHtml(monitoringDetails(event))}</td>
       </tr>
     `,
     )
     .join("");
   document.getElementById("monitoring-empty").hidden = events.length > 0;
   setText("monitoring-inside-count", String(insideRows.length));
+  setText("monitoring-inside-pill", String(insideRows.length));
 
   const insideList = document.getElementById("inside-list");
   insideList.innerHTML = insideRows
     .map((employee) => `<li>${escapeHtml(employee.name)} (${escapeHtml(employee.registration_id)})</li>`)
     .join("");
   document.getElementById("inside-empty").hidden = insideRows.length > 0;
-  renderAlerts("monitoring-alerts", "monitoring-alerts-empty", recentAlerts(events));
+  const alerts = recentAlerts(events);
+  renderAlerts("monitoring-alerts", "monitoring-alerts-empty", alerts);
+  setText("monitoring-alerts-pill", String(alerts.length));
+  setNotificationsCount(alerts.length);
 }
 
 async function refreshMonitoring() {
@@ -421,6 +666,13 @@ function populateEmployeeSelects() {
 }
 
 async function loadEmployees() {
+  if (state.localPreview) {
+    state.employees = [...state.localPreview.employees];
+    showMessage("employees-feedback", "Modo pré-visualização local ativo.");
+    renderEmployeeRows();
+    populateEmployeeSelects();
+    return;
+  }
   try {
     const { data } = await api("/api/employees");
     state.employees = Array.isArray(data) ? data : [];
@@ -433,6 +685,22 @@ async function loadEmployees() {
 }
 
 async function editEmployee(employeeId) {
+  if (state.localPreview) {
+    const data = state.employees.find((employee) => employee.id === employeeId);
+    if (!data) return;
+    resetEmployeeForm();
+    state.editingEmployeeId = employeeId;
+    employeeFields.forEach((field) => {
+      employeeForm.elements[field].value = data[field] ?? "";
+    });
+    employeeForm.elements.has_room_access.checked = Boolean(data.has_room_access);
+    employeeForm.elements.is_active.checked = Boolean(data.is_active);
+    setText("employee-form-title", `Editando: ${data.name}`);
+    setText("btn-employee-submit", "Salvar");
+    document.getElementById("btn-employee-cancel").hidden = false;
+    employeeForm.elements.name.focus();
+    return;
+  }
   try {
     const { data } = await api(`/api/employees/${employeeId}`);
     resetEmployeeForm();
@@ -455,6 +723,13 @@ async function deleteEmployee(employeeId) {
   const employee = state.employees.find((item) => item.id === employeeId);
   if (!employee) return;
   if (!confirm(`Excluir ${employee.name}?`)) return;
+  if (state.localPreview) {
+    state.localPreview.employees = state.localPreview.employees.filter((item) => item.id !== employeeId);
+    state.localPreview.events = state.localPreview.events.filter((event) => event.employee_id !== employeeId);
+    if (state.editingEmployeeId === employeeId) resetEmployeeForm();
+    await loadEmployees();
+    return;
+  }
   try {
     await api(`/api/employees/${employeeId}`, { method: "DELETE" });
     if (state.editingEmployeeId === employeeId) resetEmployeeForm();
@@ -534,14 +809,17 @@ function reportFiltersParams() {
 
 function renderReportChart(events) {
   const chart = document.getElementById("report-chart");
+  const grouping = document.getElementById("report-grouping")?.value || "hour";
   const perHour = new Map();
   events.forEach((event) => {
     if (event.type !== "entrada" && event.type !== "saida") return;
     const date = new Date(event.timestamp);
     if (Number.isNaN(date.getTime())) return;
     const hour = String(date.getHours()).padStart(2, "0");
-    if (!perHour.has(hour)) perHour.set(hour, { entrada: 0, saida: 0 });
-    perHour.get(hour)[event.type] += 1;
+    const half = date.getMinutes() < 30 ? "00" : "30";
+    const bucket = grouping === "30min" ? `${hour}:${half}` : hour;
+    if (!perHour.has(bucket)) perHour.set(bucket, { entrada: 0, saida: 0 });
+    perHour.get(bucket)[event.type] += 1;
   });
   const entries = [...perHour.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   if (!entries.length) {
@@ -550,23 +828,37 @@ function renderReportChart(events) {
     return;
   }
   document.getElementById("report-chart-empty").hidden = true;
-  const peak = Math.max(...entries.map(([, values]) => values.entrada + values.saida), 1);
+  const peak = Math.max(...entries.map(([, values]) => Math.max(values.entrada, values.saida)), 1);
   chart.innerHTML = entries
-    .map(([hour, values]) => {
-      const total = values.entrada + values.saida;
-      const entryHeight = Math.round((values.entrada / peak) * 100);
-      const exitHeight = Math.round((values.saida / peak) * 100);
-      return `
-      <div class="bar-item" title="${hour}h: ${values.entrada} entradas e ${values.saida} saídas">
-        <div class="bar-stack">
-          <div class="bar-enter" style="height: ${entryHeight}%;"></div>
-          <div class="bar-exit" style="height: ${exitHeight}%;"></div>
-        </div>
-        <small>${hour}h</small>
-        <small>${total}</small>
+    .map(([bucket, values], index) => `
+      ${index === 0
+    ? `
+      <div class="report-chart-legend">
+        <span><i class="legend-dot legend-entry"></i> Entradas</span>
+        <span><i class="legend-dot legend-exit"></i> Saídas</span>
       </div>
-    `;
-    })
+      `
+    : ""}
+      <div class="report-hour-row">
+        <div class="report-hour-label">${grouping === "30min" ? bucket : `${bucket}h`}</div>
+        <div class="report-hour-metrics">
+          <div class="report-metric-row">
+            <span class="report-metric-name">Entradas</span>
+            <div class="report-bar-track">
+              <div class="report-bar report-bar-entry" style="width: ${values.entrada ? Math.round((values.entrada / peak) * 100) : 0}%;"></div>
+            </div>
+            <span class="report-metric-value">${values.entrada}</span>
+          </div>
+          <div class="report-metric-row">
+            <span class="report-metric-name">Saídas</span>
+            <div class="report-bar-track">
+              <div class="report-bar report-bar-exit" style="width: ${values.saida ? Math.round((values.saida / peak) * 100) : 0}%;"></div>
+            </div>
+            <span class="report-metric-value">${values.saida}</span>
+          </div>
+        </div>
+      </div>
+    `)
     .join("");
 }
 
@@ -622,9 +914,12 @@ async function loadReports() {
   showMessage("reports-feedback", "");
   try {
     const reportParams = reportFiltersParams();
+    const reportsDate = document.getElementById("reports-date").value;
     const [eventsResponse, stayResponse] = await Promise.all([
       fetchEvents(reportParams),
-      api(`/api/stay?date=${encodeURIComponent(document.getElementById("reports-date").value)}`).then((response) => response.data),
+      state.localPreview
+        ? Promise.resolve(localPreviewStay(reportsDate))
+        : api(`/api/stay?date=${encodeURIComponent(reportsDate)}`).then((response) => response.data),
     ]);
     state.reportsCache = eventsResponse.rows;
     const counts = countsByType(eventsResponse.rows);
@@ -645,6 +940,12 @@ async function loadReports() {
 async function refreshDevices() {
   if (state.isRefreshing.devices) return;
   state.isRefreshing.devices = true;
+  if (state.localPreview) {
+    setStatusBadge("device-backend-status", "Preview local", "status-warning");
+    setText("device-backend-details", "Dados simulados no navegador para validação visual.");
+    state.isRefreshing.devices = false;
+    return;
+  }
   try {
     const { data } = await api("/api/health");
     setStatusBadge("device-backend-status", data?.status === "ok" ? "Online" : "Indefinido", "status-success");
@@ -694,10 +995,32 @@ function setupEmployees() {
     submitButton.disabled = true;
     submitButton.textContent = state.editingEmployeeId ? "Salvando..." : "Cadastrando...";
     try {
-      await api(state.editingEmployeeId ? `/api/employees/${state.editingEmployeeId}` : "/api/employees", {
-        method: state.editingEmployeeId ? "PATCH" : "POST",
-        body: JSON.stringify(employeePayload()),
-      });
+      const payload = employeePayload();
+      if (state.localPreview) {
+        const duplicateRegistration = state.localPreview.employees.find(
+          (employee) => employee.registration_id.toLowerCase() === payload.registration_id.toLowerCase() && employee.id !== state.editingEmployeeId,
+        );
+        if (duplicateRegistration) throw new Error("registration_id already exists");
+        if (payload.rfid_tag) {
+          const duplicateRfid = state.localPreview.employees.find(
+            (employee) => String(employee.rfid_tag || "").toLowerCase() === payload.rfid_tag.toLowerCase() && employee.id !== state.editingEmployeeId,
+          );
+          if (duplicateRfid) throw new Error("rfid_tag already exists");
+        }
+        if (state.editingEmployeeId) {
+          state.localPreview.employees = state.localPreview.employees.map((employee) =>
+            employee.id === state.editingEmployeeId ? { ...employee, ...payload } : employee,
+          );
+        } else {
+          const nextId = Math.max(0, ...state.localPreview.employees.map((employee) => employee.id)) + 1;
+          state.localPreview.employees.push({ id: nextId, ...payload });
+        }
+      } else {
+        await api(state.editingEmployeeId ? `/api/employees/${state.editingEmployeeId}` : "/api/employees", {
+          method: state.editingEmployeeId ? "PATCH" : "POST",
+          body: JSON.stringify(payload),
+        });
+      }
       resetEmployeeForm();
       await loadEmployees();
       showMessage("employees-feedback", "Operação realizada com sucesso.");
@@ -711,6 +1034,7 @@ function setupEmployees() {
   });
 
   document.getElementById("btn-employee-cancel").addEventListener("click", resetEmployeeForm);
+  document.getElementById("btn-employee-clear").addEventListener("click", resetEmployeeForm);
   document.getElementById("btn-refresh-employees").addEventListener("click", loadEmployees);
   ["employee-search", "filter-active", "filter-access"].forEach((id) => {
     document.getElementById(id).addEventListener("input", renderEmployeeRows);
@@ -763,6 +1087,9 @@ function setupLogs() {
 
 function setupReports() {
   document.getElementById("btn-reports-refresh").addEventListener("click", loadReports);
+  document.getElementById("report-grouping").addEventListener("change", () => {
+    renderReportChart(state.reportsCache || []);
+  });
   document.getElementById("btn-reports-export").addEventListener("click", () => {
     const params = new URLSearchParams();
     const from = toIsoWithTimezone(document.getElementById("reports-from").value);
@@ -777,11 +1104,16 @@ function setupTopActions() {
   document.getElementById("btn-refresh-dashboard").addEventListener("click", refreshDashboard);
   document.getElementById("btn-refresh-monitoring").addEventListener("click", refreshMonitoring);
   document.getElementById("btn-refresh-devices").addEventListener("click", refreshDevices);
-  document.getElementById("btn-logout").addEventListener("click", async () => {
+  document.getElementById("btn-notifications").addEventListener("click", () => {
+    switchView("monitoring");
+    const alertsCard = document.getElementById("monitoring-alerts");
+    if (alertsCard) alertsCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+document.getElementById("btn-logout").addEventListener("click", async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      if (!state.localPreview) await fetch("/api/auth/logout", { method: "POST" });
     } finally {
-      location.href = "/login";
+  location.href = "/login";
     }
   });
 }
@@ -817,7 +1149,11 @@ async function bootstrap() {
   setupReports();
   setupTopActions();
   setDefaultDateFilters();
+  startTopbarClock();
   resetEmployeeForm();
+  if (state.localPreview) {
+    setGlobalStatus("Pré-visualização local ativa", "status-warning");
+  }
   await loadEmployees();
   await Promise.all([refreshDashboard(), refreshMonitoring(), loadLogs(), loadReports(), refreshDevices()]);
   startPolling();
