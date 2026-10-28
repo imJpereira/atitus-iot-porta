@@ -329,6 +329,44 @@ def test_sync_omits_untagged_and_deleted(client):
     assert client.get("/api/sync/employees").get_json() == []
 
 
+def sync_tags(client):
+    return [e["rfid_tag"] for e in client.get("/api/sync/employees").get_json()]
+
+
+def untagged(client, **overrides):
+    payload = {k: v for k, v in VALID.items() if k != "rfid_tag"}
+    return client.post("/api/employees", json={**payload, **overrides}).get_json()
+
+
+def test_patch_links_tag_and_appears_in_sync(client):
+    created = untagged(client)
+    assert sync_tags(client) == []
+    response = client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": " aa:bb "})
+    assert response.status_code == 200
+    assert response.get_json()["rfid_tag"] == "AA:BB"
+    assert sync_tags(client) == ["AA:BB"]
+
+
+def test_swap_tag_old_disappears_from_sync(client):
+    created = post(client).get_json()
+    client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": "NEW"})
+    assert sync_tags(client) == ["NEW"]
+
+
+def test_unlink_tag_leaves_sync(client):
+    created = post(client).get_json()
+    client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": None})
+    assert sync_tags(client) == []
+
+
+def test_permission_and_status_in_sync(client):
+    created = post(client).get_json()
+    client.patch(f"/api/employees/{created['id']}", json={"has_room_access": True, "is_active": False})
+    [synced] = client.get("/api/sync/employees").get_json()
+    assert synced["has_room_access"] is True
+    assert synced["is_active"] is False
+
+
 def test_migration_002_preserves_data(tmp_path):
     from pathlib import Path
 
