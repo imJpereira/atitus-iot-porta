@@ -263,39 +263,6 @@ def test_patch_duplicate_rfid_tag_409(client):
     assert "rfid_tag" in response.get_json()["error"]
 
 
-def test_post_duplicate_rfid_tag_409_names_owner(client):
-    owner = post(client).get_json()
-    response = post(client, registration_id="R2", rfid_tag=" aa:bb ")
-    assert response.status_code == 409
-    assert response.get_json()["owner"] == {
-        "id": owner["id"], "name": "Ana", "registration_id": "R1",
-    }
-
-
-def test_patch_duplicate_rfid_tag_409_names_owner(client):
-    owner = post(client).get_json()
-    other = post(client, name="Bia", registration_id="R2", rfid_tag="T2").get_json()
-    response = client.patch(f"/api/employees/{other['id']}", json={"rfid_tag": "aa:bb"})
-    assert response.status_code == 409
-    assert response.get_json()["owner"] == {
-        "id": owner["id"], "name": "Ana", "registration_id": "R1",
-    }
-    assert client.get(f"/api/employees/{other['id']}").get_json()["rfid_tag"] == "T2"
-
-
-def test_duplicate_registration_409_has_no_owner(client):
-    post(client)
-    body = post(client, rfid_tag="CC:DD").get_json()
-    assert body == {"error": "registration_id already exists"}
-
-
-def test_patch_own_tag_200(client):
-    created = post(client).get_json()
-    response = client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": " aa:bb "})
-    assert response.status_code == 200
-    assert response.get_json()["rfid_tag"] == "AA:BB"
-
-
 def test_patch_rfid_tag_null_clears(client):
     created = post(client).get_json()
     body = client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": None}).get_json()
@@ -400,7 +367,8 @@ def test_patch_duplicate_rfid_tag_409_names_owner(client):
     assert response.status_code == 409
     body = response.get_json()
     assert body == {"error": "rfid_tag already exists", "owner": owner_of(owner)}
-    assert client.get(f"/api/employees/{other['id']}").get_json()["rfid_tag"] == "T2"
+    assert client.get(f"/api/employees/{other['id']}").get_json() == other
+    assert client.get(f"/api/employees/{owner['id']}").get_json() == owner
 
 
 def test_post_duplicate_rfid_tag_409_names_owner(client):
@@ -413,8 +381,12 @@ def test_post_duplicate_rfid_tag_409_names_owner(client):
 
 def test_duplicate_registration_409_has_no_owner(client):
     post(client)
-    response = post(client, rfid_tag="CC:DD")
+    other = post(client, registration_id="R2", rfid_tag="T2").get_json()
+    # other's own tag is looked up on conflict; registration_id conflicts must not leak it as owner
+    response = client.patch(f"/api/employees/{other['id']}", json={"registration_id": "R1"})
     assert response.status_code == 409
+    assert response.get_json() == {"error": "registration_id already exists"}
+    response = post(client, rfid_tag="CC:DD")
     assert response.get_json() == {"error": "registration_id already exists"}
 
 
@@ -422,4 +394,4 @@ def test_patch_own_tag_200(client):
     created = post(client).get_json()
     response = client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": " aa:bb "})
     assert response.status_code == 200
-    assert response.get_json()["rfid_tag"] == "AA:BB"
+    assert response.get_json() == created
