@@ -1,10 +1,9 @@
 import hmac
 import os
-import secrets
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, current_app, g, jsonify, redirect, request, session, url_for
+from flask import Flask, current_app, g, jsonify, request, session
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -20,8 +19,12 @@ def require_pi_key():
     return require_key("PI_API_KEY")
 
 
-def require_admin_key():
-    return require_key("ADMIN_API_KEY")
+def require_admin():
+    found = get_db().execute(
+        "SELECT 1 FROM admin_sessions WHERE token = ?", (session.get("sid"),)
+    ).fetchone()
+    if found is None:
+        return jsonify(error="unauthorized"), 401
 
 
 def get_db():
@@ -44,45 +47,25 @@ def migrate(db_path):
     db.close()
 
 
-# Paths that don't require authentication
-PUBLIC_PATHS = frozenset({"/api/health", "/api/auth/login", "/api/auth/logout", "/login"})
-# Machine endpoints guarded by their own API key, not the admin session
-KEY_PREFIXES = ("/api/sync/", "/api/export")
-
-
 def create_app(db_path=None):
     app = Flask(__name__, static_folder=str(ROOT / "web"), static_url_path="")
+    app.secret_key = os.environ.get("SECRET_KEY")
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["DATABASE"] = Path(db_path or ROOT / "data" / "app.db")
     app.config["DATABASE"].parent.mkdir(exist_ok=True)
-    # ponytail: random key per process when unset; sessions drop on restart. Set SECRET_KEY to persist.
-    app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
     migrate(app.config["DATABASE"])
 
-    from api.auth import bp as auth_bp, seed_admin
+    from api.auth import bp as auth_bp, create_admin
     from api.employees import bp as employees_bp, bp_sync
     from api.events import bp as events_bp
     from api.export import bp as export_bp
 
     app.register_blueprint(auth_bp)
+    app.cli.add_command(create_admin)
     app.register_blueprint(employees_bp)
     app.register_blueprint(bp_sync)
     app.register_blueprint(events_bp)
     app.register_blueprint(export_bp)
-
-    @app.before_request
-    def require_login():
-        if request.path in PUBLIC_PATHS or request.path.startswith(KEY_PREFIXES):
-            return None
-        if request.method == "POST" and request.path.startswith("/api/events"):
-            return None  # Pi ingestion, guarded by PI_API_KEY
-        # Static assets (css, js) served on login page need to pass through
-        if request.path.endswith((".css", ".js", ".ico", ".png", ".jpg", ".svg")):
-            return None
-        if "user_id" not in session:
-            if request.path.startswith("/api/"):
-                return jsonify(error="authentication required"), 401
-            return redirect(url_for("login_page"))
-        return None
 
     @app.teardown_appcontext
     def close_db(_exc):
@@ -102,9 +85,5 @@ def create_app(db_path=None):
     def health():
         get_db().execute("SELECT 1")
         return jsonify(status="ok")
-
-    # Seed admin on startup
-    with app.app_context():
-        seed_admin()
 
     return app

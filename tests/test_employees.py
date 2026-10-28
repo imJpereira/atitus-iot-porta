@@ -6,6 +6,11 @@ VALID = {"name": "Ana", "registration_id": "R1", "rfid_tag": "AA:BB", "role": "d
 REQUIRED = ["name", "registration_id", "role"]
 
 
+@pytest.fixture
+def client(admin_client):
+    return admin_client
+
+
 def post(client, **overrides):
     return client.post("/api/employees", json={**VALID, **overrides})
 

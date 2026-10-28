@@ -86,7 +86,7 @@
         window.location.href = "/";
       } else {
         const data = await res.json();
-        errEl.textContent = data.error || "Erro ao autenticar";
+        errEl.textContent = res.status === 401 ? "Usuário ou senha inválidos" : data.error || "Erro ao autenticar";
         errEl.style.display = "block";
       }
     });
