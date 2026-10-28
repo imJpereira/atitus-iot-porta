@@ -195,6 +195,21 @@ def test_list_invalid_params_400(client, query):
     assert client.get("/api/events", query_string=query).status_code == 400
 
 
+def test_list_orders_by_timestamp_ties_by_insertion_desc(client):
+    for event_id in ("first", "second", "third"):
+        send(client, id=event_id)
+    assert [e["id"] for e in listed(client)] == ["third", "second", "first"]
+
+
+def test_list_limit_and_offset_caps_limit_at_max_limit(client, monkeypatch):
+    monkeypatch.setattr("api.events.MAX_LIMIT", 2)
+    for index in range(3):
+        send(client, id=f"e{index}", timestamp=f"2026-10-27T10:00:0{index}Z")
+    response = client.get("/api/events", query_string={"limit": 5000})
+    assert [e["id"] for e in response.get_json()] == ["e2", "e1"]
+    assert response.headers["X-Total-Count"] == "3"
+
+
 def test_list_employee_name_known_follows_rename(client):
     employee = make_employee(client)
     send(client)
