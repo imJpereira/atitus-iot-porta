@@ -18,6 +18,24 @@ Rotas administrativas (`/api/employees`, `GET /api/events*`, `/api/export/*`) ex
 - Tag já usada por outro colaborador responde 409 `{"error": "rfid_tag already exists", "owner": {"id", "name", "registration_id"}}`.
 - `GET /api/sync/employees` (chave da Pi) lista só colaboradores com tag, inclusive inativos; a Pi decide por `is_active` e `has_room_access`. Tag trocada ou removida some da lista.
 
+## Tempo de permanência
+
+`GET /api/stay?date=YYYY-MM-DD[&employee_id=N]` (admin) devolve, por colaborador, as sessões do dia e `total_seconds`. `date` é obrigatório (400 se inválido); `employee_id` é opcional (400 se não for inteiro positivo, 404 se não existir).
+
+```json
+{"date": "2026-10-28", "employees": [{"employee_id": 1, "name": "Ana", "total_seconds": 3600, "sessions": [
+  {"entrada": "2026-10-28T11:00:00Z", "saida": "2026-10-28T12:00:00Z", "duration_seconds": 3600, "sem_saida": false},
+  {"entrada": "2026-10-29T01:00:00Z", "saida": null, "duration_seconds": null, "sem_saida": true}]}]}
+```
+
+Regra de alternância, por colaborador, só com eventos `entrada`/`saida` do dia, em ordem de `timestamp` (empate: ordem de chegada):
+
+- O dia é de 00:00 a 24:00 em `America/Sao_Paulo`; os horários saem em UTC (`Z`).
+- `entrada` seguida de `saida` fecha uma sessão; `total_seconds` soma só as fechadas.
+- `entrada` sem `saida` até o fim do dia, ou seguida de outra `entrada`, vira sessão `sem_saida`: aparece na lista, fora do total. Vale também para o dia atual.
+- `saida` sem `entrada` aberta no dia é ignorada, inclusive a do dia seguinte: a sessão aberta não vaza para o novo dia.
+- Sem `employee_id`, lista quem tem ao menos um `entrada`/`saida` no dia. Eventos de tag desconhecida são ignorados.
+
 ## Hardware (Raspberry Pi)
 
 ### Mapa de Pinos GPIO

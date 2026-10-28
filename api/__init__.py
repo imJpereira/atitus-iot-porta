@@ -62,6 +62,7 @@ def create_app(db_path=None):
     from api.employees import bp as employees_bp, bp_sync
     from api.events import bp as events_bp
     from api.export import bp as export_bp
+    from api.stay import bp as stay_bp
 
     app.register_blueprint(auth_bp)
     app.cli.add_command(create_admin)
@@ -69,6 +70,7 @@ def create_app(db_path=None):
     app.register_blueprint(bp_sync)
     app.register_blueprint(events_bp)
     app.register_blueprint(export_bp)
+    app.register_blueprint(stay_bp)
 
     @app.teardown_appcontext
     def close_db(_exc):
