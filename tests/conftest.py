@@ -28,7 +28,7 @@ def make_admin(app, username=ADMIN_USER, password=ADMIN_PASSWORD):
         db = get_db()
         db.execute(
             "INSERT INTO admins (username, password_hash) VALUES (?, ?)",
-            (username, generate_password_hash(password)),
+            (username, generate_password_hash(password, method="pbkdf2:sha256:1000")),  # cheap hash keeps the suite fast
         )
         db.commit()
 

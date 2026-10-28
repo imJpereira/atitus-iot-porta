@@ -104,3 +104,35 @@ def test_cli_duplicate_exits_1_and_keeps_password(app, admin):
     assert result.exit_code == 1
     assert login(app.test_client()).status_code == 200
     assert login(app.test_client(), password="other").status_code == 401
+
+
+PROTECTED = [
+    ("get", "/api/employees"),
+    ("post", "/api/employees"),
+    ("get", "/api/employees/1"),
+    ("patch", "/api/employees/1"),
+    ("delete", "/api/employees/1"),
+]
+
+
+@pytest.mark.parametrize("method,url", PROTECTED)
+def test_protected_routes_401(app, method, url):
+    response = getattr(app.test_client(), method)(url, json={})
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "unauthorized"}
+
+
+def test_session_allows_employees_crud(app, admin):
+    anon = app.test_client()
+    login(anon)
+    created = anon.post("/api/employees", json={"name": "Ana", "registration_id": "R1", "role": "dev"})
+    assert created.status_code == 201
+    assert anon.get("/api/employees").get_json()[0]["name"] == "Ana"
+    assert anon.patch("/api/employees/1", json={"role": "ops"}).get_json()["role"] == "ops"
+    assert anon.delete("/api/employees/1").status_code == 204
+
+
+def test_pi_key_scope(client):
+    # the Pi key opens the Pi route but not the admin ones
+    assert client.get("/api/sync/employees").status_code == 200
+    assert client.get("/api/employees").status_code == 401

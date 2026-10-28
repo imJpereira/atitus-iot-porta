@@ -2,9 +2,10 @@ import sqlite3
 
 from flask import Blueprint, jsonify, request
 
-from api import get_db, require_pi_key
+from api import get_db, require_admin, require_pi_key
 
 bp = Blueprint("employees", __name__, url_prefix="/api/employees")
+bp.before_request(require_admin)
 
 TEXT_FIELDS = ("name", "registration_id", "role")
 FLAG_FIELDS = ("has_room_access", "is_active")

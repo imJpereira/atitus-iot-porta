@@ -11,6 +11,11 @@ VALID = {
 }
 
 
+@pytest.fixture
+def client(admin_client):
+    return admin_client
+
+
 def send(client, **overrides):
     return client.post("/api/events", json={**VALID, **overrides})
 

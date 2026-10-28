@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 
 from api import ROOT, create_app
+from tests.conftest import ADMIN_PASSWORD, ADMIN_USER, make_admin
 
 EVENT = {
     "id": "e1",
@@ -16,6 +17,11 @@ PI_REQUESTS = [
     ("post", "/api/events", EVENT),
     ("post", "/api/events/batch", {"events": [EVENT]}),
 ]
+
+
+@pytest.fixture
+def client(admin_client):
+    return admin_client
 
 
 def test_create_app_uses_given_database(tmp_path):
@@ -73,7 +79,9 @@ def test_pi_key_rotation_invalidates_old_key(client, monkeypatch):
 
 
 def test_web_endpoints_do_not_require_pi_key(app):
-    anon = app.test_client()
-    assert anon.get("/api/employees").status_code == 200
-    assert anon.get("/api/events").status_code == 200
-    assert anon.get("/api/events/inside").status_code == 200
+    make_admin(app)
+    web = app.test_client()
+    assert web.post("/api/auth/login", json={"username": ADMIN_USER, "password": ADMIN_PASSWORD}).status_code == 200
+    assert web.get("/api/employees").status_code == 200
+    assert web.get("/api/events").status_code == 200
+    assert web.get("/api/events/inside").status_code == 200

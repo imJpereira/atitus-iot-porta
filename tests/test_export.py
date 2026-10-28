@@ -10,6 +10,11 @@ ROUTES = ["/api/export/events.csv", "/api/export/events.json"]
 ADMIN = {"X-API-Key": ADMIN_KEY}
 
 
+@pytest.fixture
+def client(admin_client):
+    return admin_client
+
+
 @pytest.fixture(autouse=True)
 def admin_key(monkeypatch):
     monkeypatch.setenv("ADMIN_API_KEY", ADMIN_KEY)
