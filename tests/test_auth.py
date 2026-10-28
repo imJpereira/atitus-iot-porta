@@ -22,7 +22,11 @@ def test_login_ok_sets_session(app, admin):
     assert response.get_json() == {"username": ADMIN_USER}
     assert "session=" in response.headers["Set-Cookie"]
     with anon.session_transaction() as session:
-        assert session["admin_id"] == 1
+        token = session["sid"]
+    row = sqlite3.connect(app.config["DATABASE"]).execute(
+        "SELECT admin_id FROM admin_sessions WHERE token = ?", (token,)
+    ).fetchone()
+    assert row == (1,)
 
 
 def test_wrong_password_401_without_cookie(app, admin):
@@ -82,7 +86,7 @@ def test_logout_clears_session(app, admin):
     login(anon)
     assert anon.post("/api/auth/logout").status_code == 204
     with anon.session_transaction() as session:
-        assert "admin_id" not in session
+        assert "sid" not in session
 
 
 def test_cli_create_admin_can_login(app):
@@ -195,3 +199,30 @@ def test_login_discards_previous_session_data(app, admin):
     with web.session_transaction() as session:
         assert "junk" not in session
 
+
+
+def test_logout_revokes_copied_cookie(app, admin):
+    web = app.test_client()
+    login(web)
+    stolen = web.get_cookie("session").value
+    web.post("/api/auth/logout")
+    replay = app.test_client()
+    replay.set_cookie("session", stolen)
+    response = replay.get("/api/employees")
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "unauthorized"}
+
+
+def test_other_session_survives_logout(app, admin):
+    first, second = app.test_client(), app.test_client()
+    login(first)
+    login(second)
+    first.post("/api/auth/logout")
+    assert second.get("/api/employees").status_code == 200
+
+
+def test_forged_session_token_rejected(app, admin):
+    web = app.test_client()
+    with web.session_transaction() as session:
+        session["sid"] = "not-a-real-token"
+    assert web.get("/api/employees").status_code == 401

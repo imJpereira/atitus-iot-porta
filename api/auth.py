@@ -1,3 +1,4 @@
+import secrets
 import sqlite3
 
 import click
@@ -32,12 +33,20 @@ def login():
     if row is None or not valid:
         return error("invalid credentials", 401)
     session.clear()
-    session["admin_id"] = row["id"]
+    # The cookie only carries this token; logout deletes it, so a copied cookie stops working.
+    token = secrets.token_urlsafe(32)
+    db = get_db()
+    db.execute("INSERT INTO admin_sessions (token, admin_id) VALUES (?, ?)", (token, row["id"]))
+    db.commit()
+    session["sid"] = token
     return jsonify(username=username)
 
 
 @bp.post("/logout")
 def logout():
+    db = get_db()
+    db.execute("DELETE FROM admin_sessions WHERE token = ?", (session.get("sid"),))
+    db.commit()
     session.clear()
     return "", 204
 

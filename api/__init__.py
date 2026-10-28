@@ -20,7 +20,10 @@ def require_pi_key():
 
 
 def require_admin():
-    if "admin_id" not in session:
+    found = get_db().execute(
+        "SELECT 1 FROM admin_sessions WHERE token = ?", (session.get("sid"),)
+    ).fetchone()
+    if found is None:
         return jsonify(error="unauthorized"), 401
 
 
