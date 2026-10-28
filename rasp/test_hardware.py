@@ -38,14 +38,23 @@ def pulse(gpio, pin: int, label: str, delay: float) -> None:
     time.sleep(0.1)
 
 
+def make_reader(pins: dict[str, int]):
+    # SimpleMFRC522() força GPIO.BOARD e RST=22; o projeto usa BCM, então monta o MFRC522 em BCM.
+    import RPi.GPIO as gpio  # type: ignore[import-not-found]
+    from mfrc522 import MFRC522, SimpleMFRC522  # type: ignore[import-not-found]
+
+    gpio.setmode(gpio.BCM)
+    reader = SimpleMFRC522.__new__(SimpleMFRC522)
+    reader.READER = MFRC522(pin_mode=gpio.BCM, pin_rst=pins["GPIO_RFID_RST"])
+    return reader
+
+
 def run_hardware_test(gpio=None, reader=None, delay: float = 0.5, env_path: Path = ROOT / ".env") -> str:
     pins = get_pins(env_path)
     if gpio is None:
         import RPi.GPIO as gpio  # type: ignore[import-not-found]
     if reader is None:
-        from mfrc522 import SimpleMFRC522  # type: ignore[import-not-found]
-
-        reader = SimpleMFRC522()
+        reader = make_reader(pins)
 
     output_pins = (
         (pins["GPIO_LED_GREEN"], "LED Verde"),

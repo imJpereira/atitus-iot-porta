@@ -4,7 +4,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from rasp.test_hardware import ROOT, load_env
+from rasp.test_hardware import ROOT, get_pins, load_env, make_reader
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,7 @@ def run_reader_loop(
     if debounce_seconds is None:
         debounce_seconds = get_debounce_seconds(env_path)
     if reader is None:
-        from mfrc522 import SimpleMFRC522  # type: ignore[import-not-found]
-
-        reader = SimpleMFRC522()
+        reader = make_reader(get_pins(env_path))
 
     last_seen: dict[str, float] = {}
     iterations = 0
