@@ -82,3 +82,25 @@ def test_logout_clears_session(app, admin):
     assert anon.post("/api/auth/logout").status_code == 204
     with anon.session_transaction() as session:
         assert "admin_id" not in session
+
+
+def test_cli_create_admin_can_login(app):
+    result = app.test_cli_runner().invoke(args=["create-admin", "maria"], input="pw-1234\npw-1234\n")
+    assert result.exit_code == 0
+    assert login(app.test_client(), username="maria", password="pw-1234").status_code == 200
+    row = sqlite3.connect(app.config["DATABASE"]).execute("SELECT password_hash FROM admins").fetchone()
+    assert "pw-1234" not in row[0]
+
+
+def test_cli_create_admin_password_from_env(app, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "from-env")
+    result = app.test_cli_runner().invoke(args=["create-admin", "maria"])
+    assert result.exit_code == 0
+    assert login(app.test_client(), username="maria", password="from-env").status_code == 200
+
+
+def test_cli_duplicate_exits_1_and_keeps_password(app, admin):
+    result = app.test_cli_runner().invoke(args=["create-admin", ADMIN_USER], input="other\nother\n")
+    assert result.exit_code == 1
+    assert login(app.test_client()).status_code == 200
+    assert login(app.test_client(), password="other").status_code == 401

@@ -1,4 +1,8 @@
+import sqlite3
+
+import click
 from flask import Blueprint, current_app, jsonify, request, session
+from flask.cli import with_appcontext
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from api import get_db
@@ -36,3 +40,21 @@ def login():
 def logout():
     session.clear()
     return "", 204
+
+
+@click.command("create-admin")
+@click.argument("username")
+@click.password_option(envvar="ADMIN_PASSWORD")
+@with_appcontext
+def create_admin(username, password):
+    """Create an admin; the password comes from a prompt or ADMIN_PASSWORD."""
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO admins (username, password_hash) VALUES (?, ?)",
+            (username, generate_password_hash(password)),
+        )
+    except sqlite3.IntegrityError:
+        raise click.ClickException(f"admin {username} already exists")
+    db.commit()
+    click.echo(f"admin {username} created")

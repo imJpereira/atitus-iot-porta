@@ -56,12 +56,13 @@ def create_app(db_path=None):
     app.config["DATABASE"].parent.mkdir(exist_ok=True)
     migrate(app.config["DATABASE"])
 
-    from api.auth import bp as auth_bp
+    from api.auth import bp as auth_bp, create_admin
     from api.employees import bp as employees_bp, bp_sync
     from api.events import bp as events_bp
     from api.export import bp as export_bp
 
     app.register_blueprint(auth_bp)
+    app.cli.add_command(create_admin)
     app.register_blueprint(employees_bp)
     app.register_blueprint(bp_sync)
     app.register_blueprint(events_bp)
