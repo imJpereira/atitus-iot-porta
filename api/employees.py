@@ -2,17 +2,25 @@ import sqlite3
 
 from flask import Blueprint, jsonify, request
 
-from api import get_db
+from api import get_db, require_pi_key
 
 bp = Blueprint("employees", __name__, url_prefix="/api/employees")
 
-TEXT_FIELDS = ("name", "registration_id", "rfid_tag", "role")
+TEXT_FIELDS = ("name", "registration_id", "role")
 FLAG_FIELDS = ("has_room_access", "is_active")
 RESERVED_FIELDS = ("id", "created_at", "updated_at")
+
+bp_sync = Blueprint("sync", __name__, url_prefix="/api/sync")
+bp_sync.before_request(require_pi_key)
 
 
 def error(message: str, status: int):
     return jsonify(error=message), status
+
+
+def conflict(exc: sqlite3.IntegrityError):
+    # "UNIQUE constraint failed: employees.rfid_tag" -> "rfid_tag"
+    return error(f"{str(exc).rsplit('.', 1)[-1]} already exists", 409)
 
 
 def serialize(row: sqlite3.Row) -> dict:
@@ -28,9 +36,14 @@ def parse_body(partial: bool = False):
     if not isinstance(body, dict):
         return None, "request body must be a JSON object"
     for key in body:
-        if key not in TEXT_FIELDS + FLAG_FIELDS + RESERVED_FIELDS:
+        if key not in TEXT_FIELDS + FLAG_FIELDS + RESERVED_FIELDS + ("rfid_tag",):
             return None, f"unknown field: {key}"
     fields = {}
+    if "rfid_tag" in body:
+        tag = body["rfid_tag"]
+        if tag is not None and (not isinstance(tag, str) or not tag.strip()):
+            return None, "rfid_tag must be a non-empty string or null"
+        fields["rfid_tag"] = tag and tag.strip().upper()
     for key in TEXT_FIELDS:
         if partial and key not in body:
             continue
@@ -59,10 +72,10 @@ def create_employee():
             f"VALUES ({', '.join('?' * len(fields))})",
             list(fields.values()),
         )
-    except sqlite3.IntegrityError:
-        return error("registration_id already exists", 409)
+    except sqlite3.IntegrityError as exc:
+        return conflict(exc)
     db.commit()
-    row = db.execute("SELECT * FROM employees WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    row =db.execute("SELECT * FROM employees WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return jsonify(serialize(row)), 201
 
 
@@ -102,8 +115,8 @@ def update_employee(employee_id: int):
             "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
             [*fields.values(), employee_id],
         )
-    except sqlite3.IntegrityError:
-        return error("registration_id already exists", 409)
+    except sqlite3.IntegrityError as exc:
+        return conflict(exc)
     db.commit()
     return jsonify(serialize(find_employee(employee_id)))
 
@@ -116,3 +129,11 @@ def delete_employee(employee_id: int):
     db.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
     db.commit()
     return "", 204
+
+
+@bp_sync.get("/employees")
+def sync_employees():
+    rows = get_db().execute(
+        "SELECT * FROM employees WHERE rfid_tag IS NOT NULL ORDER BY id"
+    ).fetchall()
+    return jsonify([serialize(row) for row in rows])

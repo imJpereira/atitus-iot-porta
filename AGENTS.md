@@ -31,4 +31,3 @@ uv add <pacote>                           # adiciona dependência
 - Frontend sem dependências externas; usar `fetch` para falar com `/api`.
 - Não adicionar ORM nem framework JS sem decisão explícita.
 - Para escrever código, sempre usar as skills `/ponytail` e `/flask-python`.
-- Agentes de IA nunca devem fazer commits; isso é atribuição do desenvolvedor.
