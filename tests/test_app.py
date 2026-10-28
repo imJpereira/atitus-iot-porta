@@ -85,3 +85,8 @@ def test_web_endpoints_do_not_require_pi_key(app):
     assert web.get("/api/employees").status_code == 200
     assert web.get("/api/events").status_code == 200
     assert web.get("/api/events/inside").status_code == 200
+
+
+def test_database_path_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "env.db"))
+    assert create_app().config["DATABASE"] == tmp_path / "env.db"
