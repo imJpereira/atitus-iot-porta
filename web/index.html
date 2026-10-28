@@ -163,23 +163,33 @@
         <article class="card">
           <h2 id="employee-form-title">Novo colaborador</h2>
           <form id="employee-form" class="form-grid" novalidate>
-            <label for="emp-name">Nome *</label>
-            <input id="emp-name" name="name" required>
+            <div class="field-group">
+              <label for="emp-name">Nome *</label>
+              <input id="emp-name" name="name" required>
+            </div>
 
-            <label for="emp-registration">Matrícula *</label>
-            <input id="emp-registration" name="registration_id" required>
+            <div class="field-group">
+              <label for="emp-registration">Matrícula *</label>
+              <input id="emp-registration" name="registration_id" required>
+            </div>
 
-            <label for="emp-role">Cargo *</label>
-            <input id="emp-role" name="role" required>
+            <div class="field-group">
+              <label for="emp-role">Cargo *</label>
+              <input id="emp-role" name="role" required>
+            </div>
 
-            <label for="emp-rfid">Tag RFID</label>
-            <input id="emp-rfid" name="rfid_tag" placeholder="Opcional">
+            <div class="field-group">
+              <label for="emp-rfid">Tag RFID</label>
+              <input id="emp-rfid" name="rfid_tag" placeholder="Opcional">
+            </div>
 
-            <label class="inline-check"><input type="checkbox" name="has_room_access"> Acesso à sala</label>
-            <label class="inline-check"><input type="checkbox" name="is_active" checked> Colaborador ativo</label>
+            <div class="checks-row field-group-wide">
+              <label class="inline-check"><input type="checkbox" name="has_room_access"> Acesso à sala</label>
+              <label class="inline-check"><input type="checkbox" name="is_active" checked> Colaborador ativo</label>
+            </div>
 
-            <p id="employee-form-feedback" class="feedback error" hidden></p>
-            <div class="inline-actions">
+            <p id="employee-form-feedback" class="feedback error field-group-wide" hidden></p>
+            <div class="inline-actions field-group-wide">
               <button type="submit" id="btn-employee-submit" class="btn">Cadastrar</button>
               <button type="button" id="btn-employee-cancel" class="btn btn-ghost" hidden>Cancelar edição</button>
             </div>
@@ -191,23 +201,29 @@
             <button id="btn-refresh-employees" type="button" class="btn btn-ghost">Atualizar</button>
           </div>
           <form id="employee-filters" class="filters-grid">
-            <label for="employee-search">Busca</label>
-            <input id="employee-search" placeholder="Nome, matrícula ou RFID">
+            <div class="field-group field-group-wide field-employee-search">
+              <label for="employee-search">Busca</label>
+              <input id="employee-search" placeholder="Nome, matrícula ou RFID">
+            </div>
 
-            <label for="filter-active">Status</label>
-            <select id="filter-active">
-              <option value="">Todos</option>
-              <option value="active">Ativos</option>
-              <option value="inactive">Inativos</option>
-              <option value="denied">Negado</option>
-            </select>
+            <div class="field-group field-employee-status">
+              <label for="filter-active">Status</label>
+              <select id="filter-active">
+                <option value="">Todos</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+                <option value="denied">Negado</option>
+              </select>
+            </div>
 
-            <label for="filter-access">Acesso</label>
-            <select id="filter-access">
-              <option value="">Todos</option>
-              <option value="allowed">Permitidos</option>
-              <option value="denied">Negados</option>
-            </select>
+            <div class="field-group field-employee-access">
+              <label for="filter-access">Acesso</label>
+              <select id="filter-access">
+                <option value="">Todos</option>
+                <option value="allowed">Permitidos</option>
+                <option value="denied">Negados</option>
+              </select>
+            </div>
           </form>
           <p id="employees-feedback" class="feedback error" hidden></p>
           <p id="employees-empty" class="empty-state" hidden>Nenhum colaborador encontrado para os filtros.</p>
@@ -234,30 +250,40 @@
         <article class="card">
           <h2>Filtros de logs</h2>
           <form id="logs-filters" class="filters-grid">
-            <label for="logs-from">De</label>
-            <input id="logs-from" type="datetime-local">
+            <div class="field-group">
+              <label for="logs-from">De</label>
+              <input id="logs-from" type="datetime-local">
+            </div>
 
-            <label for="logs-to">Até</label>
-            <input id="logs-to" type="datetime-local">
+            <div class="field-group">
+              <label for="logs-to">Até</label>
+              <input id="logs-to" type="datetime-local">
+            </div>
 
-            <label for="logs-type">Tipo</label>
-            <select id="logs-type">
-              <option value="">Todos</option>
-              <option value="entrada">Entrada</option>
-              <option value="saida">Saída</option>
-              <option value="acesso_negado">Acesso negado</option>
-              <option value="tentativa_invasao">Tentativa de invasão</option>
-            </select>
+            <div class="field-group">
+              <label for="logs-type">Tipo</label>
+              <select id="logs-type">
+                <option value="">Todos</option>
+                <option value="entrada">Entrada</option>
+                <option value="saida">Saída</option>
+                <option value="acesso_negado">Acesso negado</option>
+                <option value="tentativa_invasao">Tentativa de invasão</option>
+              </select>
+            </div>
 
-            <label for="logs-employee">Colaborador</label>
-            <select id="logs-employee">
-              <option value="">Todos</option>
-            </select>
+            <div class="field-group">
+              <label for="logs-employee">Colaborador</label>
+              <select id="logs-employee">
+                <option value="">Todos</option>
+              </select>
+            </div>
 
-            <label for="logs-search">Pesquisa</label>
-            <input id="logs-search" placeholder="Nome, matrícula, TAG ou origem">
+            <div class="field-group field-group-wide">
+              <label for="logs-search">Pesquisa</label>
+              <input id="logs-search" placeholder="Nome, matrícula, TAG ou origem">
+            </div>
           </form>
-          <div class="inline-actions">
+          <div class="inline-actions filters-actions">
             <button id="btn-logs-apply" type="button" class="btn">Filtrar</button>
             <button id="btn-logs-clear" type="button" class="btn btn-ghost">Limpar</button>
             <button id="btn-logs-export" type="button" class="btn btn-ghost">Exportar CSV</button>
@@ -292,16 +318,22 @@
         <article class="card">
           <h2>Período do relatório</h2>
           <form id="reports-filters" class="filters-grid">
-            <label for="reports-date">Data (permanência)</label>
-            <input id="reports-date" type="date">
+            <div class="field-group">
+              <label for="reports-date">Data (permanência)</label>
+              <input id="reports-date" type="date">
+            </div>
 
-            <label for="reports-from">De</label>
-            <input id="reports-from" type="datetime-local">
+            <div class="field-group">
+              <label for="reports-from">De</label>
+              <input id="reports-from" type="datetime-local">
+            </div>
 
-            <label for="reports-to">Até</label>
-            <input id="reports-to" type="datetime-local">
+            <div class="field-group">
+              <label for="reports-to">Até</label>
+              <input id="reports-to" type="datetime-local">
+            </div>
           </form>
-          <div class="inline-actions">
+          <div class="inline-actions filters-actions">
             <button id="btn-reports-refresh" type="button" class="btn">Atualizar relatório</button>
             <button id="btn-reports-export" type="button" class="btn btn-ghost">Exportar JSON</button>
           </div>
@@ -357,9 +389,11 @@
 
       <section class="view" data-view="devices">
         <article class="card">
-          <h2>Status de dispositivos e conectividade</h2>
-          <p class="muted">Esta seção exibe apenas informações confirmadas pela API disponível.</p>
-          <div class="cards-grid">
+          <div class="devices-header">
+            <h2>Status de dispositivos e conectividade</h2>
+            <p class="muted devices-subtitle">Esta seção exibe apenas informações confirmadas pela API disponível.</p>
+          </div>
+          <div class="cards-grid devices-grid">
             <article class="card nested">
               <h3>API do servidor ARGOS</h3>
               <p id="device-backend-status" class="status-badge status-neutral">Desconhecido</p>
@@ -381,7 +415,9 @@
               <p class="muted">Depende de integração de hardware/backend ainda não exposta ao frontend.</p>
             </article>
           </div>
-          <button id="btn-refresh-devices" type="button" class="btn btn-ghost">Verificar API agora</button>
+          <div class="device-actions">
+            <button id="btn-refresh-devices" type="button" class="btn btn-ghost">Verificar API agora</button>
+          </div>
         </article>
       </section>
     </main>

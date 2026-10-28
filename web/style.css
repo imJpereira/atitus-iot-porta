@@ -408,14 +408,74 @@ th {
 .form-grid,
 .filters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 0.55rem;
   align-items: end;
+}
+
+#employee-form {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+#employee-form .field-group-wide {
+  grid-column: 1 / -1;
+}
+
+#employee-form .inline-actions {
+  justify-content: flex-start;
+}
+
+#employee-form .feedback {
+  min-height: 1.1rem;
+}
+
+.checks-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-items: center;
+}
+
+#employee-filters {
+  grid-template-columns: minmax(180px, 220px) minmax(180px, 220px);
+  grid-template-areas:
+    "search search"
+    "status access";
+  justify-content: start;
+}
+
+#employee-filters .field-group-wide {
+  grid-area: search;
+  max-width: 620px;
+}
+
+#employee-filters .field-employee-status {
+  grid-area: status;
+}
+
+#employee-filters .field-employee-access {
+  grid-area: access;
+}
+
+#employee-filters .field-employee-status,
+#employee-filters .field-employee-access {
+  max-width: 220px;
 }
 
 label {
   font-size: 0.86rem;
   color: var(--muted);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
+.field-group-wide {
+  grid-column: span 2;
 }
 
 .inline-check {
@@ -530,6 +590,32 @@ label {
 
 .mobile-only {
   display: none;
+}
+
+.filters-actions {
+  margin-top: 0.35rem;
+}
+
+.devices-header {
+  margin-bottom: 0.55rem;
+}
+
+.devices-subtitle {
+  margin-top: 0.35rem;
+}
+
+.devices-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.device-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.device-actions .btn {
+  min-width: 170px;
 }
 
 body.login-body {
@@ -691,6 +777,32 @@ body.login-body {
     flex-wrap: wrap;
   }
 
+  .field-group-wide {
+    grid-column: span 1;
+  }
+
+  #employee-filters {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "search"
+      "status"
+      "access";
+  }
+
+  #employee-filters .field-employee-search,
+  #employee-filters .field-employee-status,
+  #employee-filters .field-employee-access {
+    max-width: none;
+  }
+
+  .filters-actions {
+    justify-content: flex-start;
+  }
+
+  .filters-actions .btn {
+    min-width: 150px;
+  }
+
   .cards-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -699,5 +811,13 @@ body.login-body {
 @media (max-width: 430px) {
   .cards-grid {
     grid-template-columns: 1fr;
+  }
+
+  .devices-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .device-actions .btn {
+    width: 100%;
   }
 }
