@@ -1,5 +1,15 @@
 from datetime import datetime, timedelta, timezone
+from itertools import groupby
 from zoneinfo import ZoneInfo
+
+from flask import Blueprint, jsonify, request
+
+from api import get_db, require_admin
+from api.employees import error
+from api.events import int_arg
+
+bp = Blueprint("stay", __name__, url_prefix="/api/stay")
+bp.before_request(require_admin)
 
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -43,3 +53,43 @@ def open_session(entrada: str) -> dict:
 
 def parse(moment: str) -> datetime:
     return datetime.strptime(moment, UTC_FORMAT)
+
+
+def employee_stay(employee_id: int, name: str, events: list[tuple[str, str]]) -> dict:
+    sessions = pair_sessions(events)
+    total = sum(s["duration_seconds"] for s in sessions if not s["sem_saida"])
+    return {"employee_id": employee_id, "name": name, "total_seconds": total, "sessions": sessions}
+
+
+@bp.get("")
+def get_stay():
+    date = request.args.get("date", "")
+    try:
+        start, end = day_bounds(date)
+    except ValueError:
+        return error("date must be YYYY-MM-DD", 400)
+    clauses, params = [], [start, end]
+    if "employee_id" in request.args:
+        employee_id = int_arg("employee_id", 0, 1)
+        if employee_id is None:
+            return error("employee_id must be a positive integer", 400)
+        clauses.append("AND emp.id = ?")
+        params.append(employee_id)
+    db = get_db()
+    if clauses and db.execute("SELECT 1 FROM employees WHERE id = ?", (employee_id,)).fetchone() is None:
+        return error("employee not found", 404)
+    rows = db.execute(
+        "SELECT emp.id, emp.name, ev.type, ev.timestamp FROM events ev "
+        "JOIN employees emp ON emp.id = ev.employee_id "
+        "WHERE ev.type IN ('entrada', 'saida') AND ev.timestamp >= ? AND ev.timestamp < ? "
+        f"{' '.join(clauses)} ORDER BY emp.id, ev.timestamp, ev.rowid",
+        params,
+    ).fetchall()
+    employees = [
+        employee_stay(key[0], key[1], [(r["type"], r["timestamp"]) for r in group])
+        for key, group in groupby(rows, key=lambda r: (r["id"], r["name"]))
+    ]
+    if clauses and not employees:
+        name = db.execute("SELECT name FROM employees WHERE id = ?", (employee_id,)).fetchone()["name"]
+        employees = [employee_stay(employee_id, name, [])]
+    return jsonify(date=date, employees=employees)
