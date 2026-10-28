@@ -36,12 +36,12 @@ def test_health_returns_ok(client):
 
 
 @pytest.mark.parametrize(("method", "url", "payload"), PI_REQUESTS)
-def test_pi_endpoints_reject_missing_key_and_do_not_write(app, method, url, payload):
+def test_pi_endpoints_reject_missing_key_and_do_not_write(app, client, method, url, payload):
     anon = app.test_client()
     response = getattr(anon, method)(url, json=payload)
     assert response.status_code == 401
     assert response.get_json() == {"error": "unauthorized"}
-    assert anon.get("/api/events").get_json() == []
+    assert client.get("/api/events").get_json() == []
 
 
 @pytest.mark.parametrize(("method", "url", "payload"), PI_REQUESTS)
@@ -74,6 +74,7 @@ def test_pi_key_rotation_invalidates_old_key(client, monkeypatch):
 
 def test_web_endpoints_do_not_require_pi_key(app):
     anon = app.test_client()
+    anon.post("/api/auth/login", json={"username": "admin", "password": "testpass"})
     assert anon.get("/api/employees").status_code == 200
     assert anon.get("/api/events").status_code == 200
     assert anon.get("/api/events/inside").status_code == 200
