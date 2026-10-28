@@ -59,6 +59,7 @@ def create_app(db_path=None):
     migrate(app.config["DATABASE"])
 
     from api.auth import bp as auth_bp, create_admin
+    from api.demo_seed import seed_demo_command
     from api.employees import bp as employees_bp, bp_sync
     from api.events import bp as events_bp
     from api.export import bp as export_bp
@@ -66,6 +67,7 @@ def create_app(db_path=None):
 
     app.register_blueprint(auth_bp)
     app.cli.add_command(create_admin)
+    app.cli.add_command(seed_demo_command)
     app.register_blueprint(employees_bp)
     app.register_blueprint(bp_sync)
     app.register_blueprint(events_bp)
