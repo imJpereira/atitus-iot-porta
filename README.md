@@ -18,6 +18,13 @@ Rotas administrativas (`/api/employees`, `GET /api/events*`, `/api/export/*`) ex
 - Tag já usada por outro colaborador responde 409 `{"error": "rfid_tag already exists", "owner": {"id", "name", "registration_id"}}`.
 - `GET /api/sync/employees` (chave da Pi) lista só colaboradores com tag, inclusive inativos; a Pi decide por `is_active` e `has_room_access`. Tag trocada ou removida some da lista.
 
+## Cache Local de Colaboradores (Raspberry Pi)
+
+- Na inicialização, a Pi consulta `GET /api/sync/employees` e salva o cache em `data/employees_cache.json` no formato `{"updated_at": "<ISO-8601 UTC>", "employees": [...]}`.
+- Com conexão ativa, o cache é atualizado periodicamente no intervalo definido por `CACHE_SYNC_INTERVAL_SECONDS` (padrão `60` segundos); falhas de rede durante a atualização mantêm o cache anterior intacto.
+- Se a Pi iniciar sem conexão e existir `data/employees_cache.json`, ela carrega o arquivo local e valida os crachás normalmente.
+- **Comportamento sem cache:** se a Pi iniciar sem conexão e não houver cache local, o estado é registrado em log e toda tag lida é negada (`acesso_negado`, LED amarelo + buzzer e aviso de cache indisponível), tentando reconectar a cada leitura/ciclo.
+
 ## Tempo de permanência
 
 `GET /api/stay?date=YYYY-MM-DD[&employee_id=N]` (admin) devolve, por colaborador, as sessões do dia e `total_seconds`. `date` é obrigatório (400 se inválido); `employee_id` é opcional (400 se não for inteiro positivo, 404 se não existir).

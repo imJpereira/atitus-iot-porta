@@ -19,6 +19,8 @@ UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DEFAULT_API_BASE_URL = "http://127.0.0.1:5000"
 SOURCE = "raspberry_pi"
 DEFAULT_STATE_PATH = ROOT / "data" / "rasp_state.json"
+DEFAULT_CACHE_PATH = ROOT / "data" / "employees_cache.json"
+DEFAULT_SYNC_INTERVAL_SECONDS = 60.0
 
 PATTERNS: dict[str, tuple[tuple[tuple[str, ...], float, float], ...]] = {
     "first_entry": (
@@ -134,6 +136,11 @@ def emit_feedback(
         sleep(off_seconds)
 
 
+def get_sync_interval(env_path: Path = ROOT / ".env") -> float:
+    load_env(env_path)
+    return float(os.environ.get("CACHE_SYNC_INTERVAL_SECONDS", DEFAULT_SYNC_INTERVAL_SECONDS))
+
+
 def fetch_employees(
     *,
     base_url: str | None = None,
@@ -182,22 +189,39 @@ class AccessController:
         sleep: Callable[[float], None] = time.sleep,
         display: Callable[[str], None] = print,
         sender: Callable[[dict[str, str]], object] | None = None,
+        fetcher: Callable[[], list[dict]] | None = None,
+        sync_interval: float | None = None,
         env_path: Path = ROOT / ".env",
         state_path: Path | None = DEFAULT_STATE_PATH,
+        cache_path: Path | None = DEFAULT_CACHE_PATH,
     ) -> None:
         self.env_path = env_path
         self.state_path = state_path
+        self.cache_path = cache_path
         self.pins = pins if pins is not None else get_pins(env_path)
         self.gpio = gpio
         self.clock = clock
         self.sleep = sleep
         self.display = display
         self.sender = sender or (lambda ev: send_event(ev, env_path=env_path))
-        self.employees_by_tag = index_employees(employees or [])
+        self.sync_interval = sync_interval if sync_interval is not None else get_sync_interval(env_path)
+        self.updated_at: str | None = None
+        self.last_sync_at: datetime | None = None
         self.current_date: str | None = None
         self.entered_today: set[str] = set()
         self.inside: set[str] = set()
         self._load_state()
+
+        if employees is not None:
+            self.fetcher = fetcher
+            self.employees_by_tag = index_employees(employees)
+            self.has_cache = True
+        else:
+            self.fetcher = fetcher or (lambda: fetch_employees(env_path=env_path))
+            self.employees_by_tag = {}
+            self.has_cache = False
+            self._load_cache()
+            self.sync_employees()
 
     def _load_state(self) -> None:
         if self.state_path is None or not self.state_path.is_file():
@@ -223,8 +247,63 @@ class AccessController:
         }
         self.state_path.write_text(json.dumps(payload), encoding="utf-8")
 
+    def _load_cache(self) -> None:
+        if self.cache_path is None or not self.cache_path.is_file():
+            return
+        try:
+            data = json.loads(self.cache_path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.warning("Arquivo de cache inválido em %s; ignorando", self.cache_path)
+            return
+        if isinstance(data, dict) and isinstance(data.get("employees"), list):
+            self.employees_by_tag = index_employees(data["employees"])
+            self.updated_at = data.get("updated_at") if isinstance(data.get("updated_at"), str) else None
+            self.has_cache = True
+            logger.info("Cache local de colaboradores carregado de %s (updated_at=%s)", self.cache_path, self.updated_at)
+
+    def _save_cache(self, employees: list[dict]) -> None:
+        if self.cache_path is None:
+            return
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"updated_at": self.updated_at, "employees": employees}
+        self.cache_path.write_text(json.dumps(payload), encoding="utf-8")
+
     def update_employees(self, employees: list[dict]) -> None:
         self.employees_by_tag = index_employees(employees)
+        self.has_cache = True
+
+    def sync_employees(self, moment: datetime | None = None) -> bool:
+        if self.fetcher is None:
+            return self.has_cache
+        now = moment or self.clock()
+        self.last_sync_at = now
+        try:
+            employees = self.fetcher()
+        except Exception:
+            if self.has_cache:
+                logger.warning(
+                    "Falha ao atualizar cache de colaboradores; mantendo cache anterior (%s)",
+                    self.updated_at,
+                )
+            else:
+                logger.error("Sem conexão com o backend e sem cache local de colaboradores disponível")
+            return False
+        self.update_employees(employees)
+        self.updated_at = now.astimezone(timezone.utc).strftime(UTC_FORMAT)
+        self._save_cache(employees)
+        return True
+
+    def maybe_sync(self, moment: datetime | None = None) -> bool:
+        if self.fetcher is None:
+            return self.has_cache
+        now = moment or self.clock()
+        if (
+            not self.has_cache
+            or self.last_sync_at is None
+            or (now - self.last_sync_at).total_seconds() >= self.sync_interval
+        ):
+            return self.sync_employees(now)
+        return self.has_cache
 
     def handle_tag(self, raw_tag: object) -> dict | None:
         tag = normalize_uid(raw_tag)
@@ -232,15 +311,24 @@ class AccessController:
             return None
 
         moment = self.clock()
+        self.maybe_sync(moment)
         day = local_date(moment)
         if day != self.current_date:
             self.current_date = day
             self.entered_today.clear()
             self.inside.clear()
 
-        case, event_type, message = classify_access(
-            tag, self.employees_by_tag, self.entered_today, self.inside
-        )
+        if not self.has_cache:
+            logger.warning("Tag %s não validável: sem conexão e sem cache local de colaboradores", tag)
+            case, event_type, message = (
+                "access_denied",
+                "acesso_negado",
+                f"Acesso negado: cache local indisponível ({tag})",
+            )
+        else:
+            case, event_type, message = classify_access(
+                tag, self.employees_by_tag, self.entered_today, self.inside
+            )
         self._save_state()
         self.display(message)
         emit_feedback(case, gpio=self.gpio, pins=self.pins, sleep=self.sleep, env_path=self.env_path)
@@ -254,6 +342,5 @@ class AccessController:
 
 def run_access_loop(*, controller: AccessController | None = None, env_path: Path = ROOT / ".env", **loop_kwargs) -> None:
     if controller is None:
-        employees = fetch_employees(env_path=env_path)
-        controller = AccessController(employees, env_path=env_path)
-    run_reader_loop(controller.handle_tag, env_path=env_path, **loop_kwargs)
+        controller = AccessController(env_path=env_path)
+    run_reader_loop(controller.handle_tag, on_tick=controller.maybe_sync, env_path=env_path, **loop_kwargs)

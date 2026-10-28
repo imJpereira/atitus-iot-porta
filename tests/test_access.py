@@ -342,3 +342,174 @@ def test_run_access_loop_integrates_with_rfid_reader(monkeypatch, tmp_path):
         ("TAG-ATIVA", "entrada"),
         ("DESCONHECIDA", "tentativa_invasao"),
     ]
+
+
+def test_startup_online_saves_local_cache_with_updated_at(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    cache_file = tmp_path / "employees_cache.json"
+    moment = datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc)
+
+    controller = AccessController(
+        gpio=FakeGPIO(),
+        clock=lambda: moment,
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=lambda _: None,
+        fetcher=lambda: EMPLOYEES,
+        env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
+        cache_path=cache_file,
+    )
+
+    assert controller.has_cache is True
+    assert controller.updated_at == "2026-10-28T12:00:00Z"
+    saved = json.loads(cache_file.read_text(encoding="utf-8"))
+    assert saved == {"updated_at": "2026-10-28T12:00:00Z", "employees": EMPLOYEES}
+
+    res = controller.handle_tag("TAG-ATIVA")
+    assert res["case"] == "first_entry"
+    assert res["event"]["type"] == "entrada"
+
+
+def test_startup_offline_with_existing_cache_operates_normally(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    cache_file = tmp_path / "employees_cache.json"
+    cache_file.write_text(
+        json.dumps({"updated_at": "2026-10-28T10:00:00Z", "employees": EMPLOYEES}),
+        encoding="utf-8",
+    )
+
+    def offline_fetcher():
+        raise OSError("network unreachable")
+
+    controller = AccessController(
+        gpio=FakeGPIO(),
+        clock=lambda: datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=lambda _: None,
+        fetcher=offline_fetcher,
+        env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
+        cache_path=cache_file,
+    )
+
+    assert controller.has_cache is True
+    assert controller.updated_at == "2026-10-28T10:00:00Z"
+    res = controller.handle_tag("TAG-ATIVA")
+    assert res["case"] == "first_entry"
+    assert res["message"] == "Bem-vindo, Ana Silva"
+
+
+def test_startup_offline_without_cache_denies_all_logs_and_reconnects(monkeypatch, tmp_path, caplog):
+    clear_pin_env(monkeypatch)
+    cache_file = tmp_path / "employees_cache.json"
+    online = False
+
+    def flaky_fetcher():
+        if not online:
+            raise OSError("offline")
+        return EMPLOYEES
+
+    moments = iter([
+        datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),  # init sync attempt
+        datetime(2026, 10, 28, 12, 0, 5, tzinfo=timezone.utc),  # 1st tag read (still offline)
+        datetime(2026, 10, 28, 12, 0, 10, tzinfo=timezone.utc),  # 2nd tag read (back online)
+    ])
+    messages: list[str] = []
+
+    controller = AccessController(
+        gpio=FakeGPIO(),
+        clock=lambda: next(moments),
+        sleep=lambda _: None,
+        display=messages.append,
+        sender=lambda _: None,
+        fetcher=flaky_fetcher,
+        env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
+        cache_path=cache_file,
+    )
+
+    assert controller.has_cache is False
+    assert not cache_file.exists()
+
+    # Sem cache e sem rede -> nega qualquer tag e sinaliza no log e no display
+    denied = controller.handle_tag("TAG-ATIVA")
+    assert denied["case"] == "access_denied"
+    assert denied["event"]["type"] == "acesso_negado"
+    assert "cache local indisponível" in denied["message"]
+    assert "não validável" in caplog.text
+
+    # Rede volta -> reconecta ao ler próxima tag, salva cache e libera acesso
+    online = True
+    allowed = controller.handle_tag("TAG-ATIVA")
+    assert controller.has_cache is True
+    assert cache_file.is_file()
+    assert allowed["case"] == "first_entry"
+    assert allowed["event"]["type"] == "entrada"
+
+
+def test_periodic_sync_applies_permission_changes_and_preserves_cache_on_failure(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text("CACHE_SYNC_INTERVAL_SECONDS=30\n", encoding="utf-8")
+    monkeypatch.delenv("CACHE_SYNC_INTERVAL_SECONDS", raising=False)
+    cache_file = tmp_path / "employees_cache.json"
+
+    current_employees = [
+        {"id": 2, "name": "Bruno Costa", "rfid_tag": "TAG-SEM-ACESSO", "is_active": True, "has_room_access": False},
+    ]
+    should_fail = False
+    fetch_calls = 0
+
+    def dynamic_fetcher():
+        nonlocal fetch_calls
+        fetch_calls += 1
+        if should_fail:
+            raise OSError("timeout")
+        return list(current_employees)
+
+    moments = iter([
+        datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),   # init sync (t=0s)
+        datetime(2026, 10, 28, 12, 0, 10, tzinfo=timezone.utc),  # t=10s (<30s, sem novo sync)
+        datetime(2026, 10, 28, 12, 0, 35, tzinfo=timezone.utc),  # t=35s (>=30s, aplica nova permissão)
+        datetime(2026, 10, 28, 12, 1, 10, tzinfo=timezone.utc),  # t=70s (>=30s, falha mas preserva cache)
+    ])
+
+    controller = AccessController(
+        gpio=FakeGPIO(),
+        clock=lambda: next(moments),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=lambda _: None,
+        fetcher=dynamic_fetcher,
+        env_path=env_file,
+        state_path=tmp_path / "state.json",
+        cache_path=cache_file,
+    )
+    assert controller.sync_interval == 30.0
+    assert fetch_calls == 1
+
+    # Admin libera acesso no backend, mas aos t=10s ainda usa o cache antigo
+    current_employees = [
+        {"id": 2, "name": "Bruno Costa", "rfid_tag": "TAG-SEM-ACESSO", "is_active": True, "has_room_access": True},
+    ]
+    r_before = controller.handle_tag("TAG-SEM-ACESSO")
+    assert r_before["case"] == "access_denied"
+    assert fetch_calls == 1
+
+    # Aos t=35s o intervalo de 30s expirou -> atualiza cache e aplica a nova permissão
+    r_after = controller.handle_tag("TAG-SEM-ACESSO")
+    assert fetch_calls == 2
+    assert r_after["case"] == "first_entry"
+    assert controller.updated_at == "2026-10-28T12:00:35Z"
+
+    # Aos t=70s o backend cai -> falha na atualização não apaga o cache anterior (nem memória nem disco)
+    should_fail = True
+    r_offline = controller.handle_tag("TAG-SEM-ACESSO")
+    assert fetch_calls == 3
+    assert r_offline["event"]["type"] == "saida"
+    assert controller.updated_at == "2026-10-28T12:00:35Z"
+    saved = json.loads(cache_file.read_text(encoding="utf-8"))
+    assert saved["updated_at"] == "2026-10-28T12:00:35Z"
+    assert saved["employees"][0]["has_room_access"] is True
