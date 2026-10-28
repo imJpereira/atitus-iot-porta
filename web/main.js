@@ -5,37 +5,6 @@ const EVENT_LABEL = {
   tentativa_invasao: "Tentativa de invasão",
 };
 
-const localPreviewEnabled = new URLSearchParams(location.search).get("preview") === "1";
-
-function isoMinutesAgo(minutesAgo) {
-  return new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
-}
-
-function createLocalPreviewData() {
-  const employees = [
-    { id: 1, name: "João Silva", registration_id: "MAT-004", role: "Desenvolvedor", rfid_tag: "RFID004", has_room_access: true, is_active: true },
-    { id: 2, name: "Marina Costa", registration_id: "MAT-005", role: "Analista de Segurança", rfid_tag: "RFID005", has_room_access: true, is_active: true },
-    { id: 3, name: "Lucas Almeida", registration_id: "MAT-006", role: "Suporte Técnico", rfid_tag: "RFID006", has_room_access: false, is_active: true },
-    { id: 4, name: "Ana Ferreira", registration_id: "MAT-007", role: "Designer 3D", rfid_tag: "RFID007", has_room_access: true, is_active: true },
-    { id: 5, name: "Pedro Martins", registration_id: "MAT-008", role: "Analista de TI", rfid_tag: "RFID008", has_room_access: false, is_active: true },
-    { id: 6, name: "Beatriz Souza", registration_id: "MAT-009", role: "Desenvolvedora", rfid_tag: "RFID009", has_room_access: true, is_active: false },
-    { id: 7, name: "Rafael Mendes", registration_id: "MAT-010", role: "Coordenador de Projetos", rfid_tag: "RFID010", has_room_access: true, is_active: true },
-    { id: 8, name: "Juliana Rocha", registration_id: "MAT-011", role: "Estagiária de TI", rfid_tag: "RFID011", has_room_access: false, is_active: true },
-  ];
-  const events = [
-    { id: 1, employee_id: 1, employee_name: "João Silva", rfid_tag: "RFID004", type: "entrada", source: "rfid-gate", timestamp: isoMinutesAgo(95) },
-    { id: 2, employee_id: 2, employee_name: "Marina Costa", rfid_tag: "RFID005", type: "entrada", source: "rfid-gate", timestamp: isoMinutesAgo(82) },
-    { id: 3, employee_id: 3, employee_name: "Lucas Almeida", rfid_tag: "RFID006", type: "acesso_negado", source: "rfid-gate", timestamp: isoMinutesAgo(78) },
-    { id: 4, employee_id: 5, employee_name: "Pedro Martins", rfid_tag: "RFID008", type: "acesso_negado", source: "rfid-gate", timestamp: isoMinutesAgo(67) },
-    { id: 5, employee_id: null, employee_name: null, rfid_tag: "RFID999", type: "tentativa_invasao", source: "rfid-gate", timestamp: isoMinutesAgo(55) },
-    { id: 6, employee_id: 1, employee_name: "João Silva", rfid_tag: "RFID004", type: "saida", source: "rfid-gate", timestamp: isoMinutesAgo(40) },
-    { id: 7, employee_id: 2, employee_name: "Marina Costa", rfid_tag: "RFID005", type: "saida", source: "rfid-gate", timestamp: isoMinutesAgo(24) },
-    { id: 8, employee_id: 7, employee_name: "Rafael Mendes", rfid_tag: "RFID010", type: "entrada", source: "rfid-gate", timestamp: isoMinutesAgo(14) },
-    { id: 9, employee_id: 4, employee_name: "Ana Ferreira", rfid_tag: "RFID007", type: "entrada", source: "rfid-gate", timestamp: isoMinutesAgo(7) },
-  ];
-  return { employees, events };
-}
-
 const state = {
   currentView: "dashboard",
   employees: [],
@@ -45,7 +14,6 @@ const state = {
   pollTimer: null,
   clockTimer: null,
   reportsCache: [],
-  localPreview: localPreviewEnabled ? createLocalPreviewData() : null,
   notificationsCount: 0,
 };
 
@@ -195,6 +163,14 @@ function formatDuration(totalSeconds) {
   return `${hours}h ${String(minutes).padStart(2, "0")}min`;
 }
 
+function formatElapsedFrom(isoDate) {
+  if (!isoDate) return "Indisponível";
+  const started = new Date(isoDate).getTime();
+  if (Number.isNaN(started)) return "Indisponível";
+  const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000));
+  return formatDuration(seconds);
+}
+
 function toIsoLocalInput(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -276,84 +252,6 @@ function employeeById(employeeId) {
   return state.employees.find((employee) => employee.id === employeeId) || null;
 }
 
-function localPreviewEvents(params = {}) {
-  if (!state.localPreview) return { rows: [], total: 0 };
-  const fromTime = params.from ? new Date(params.from).getTime() : null;
-  const toTime = params.to ? new Date(params.to).getTime() : null;
-  let rows = [...state.localPreview.events].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  rows = rows.filter((event) => {
-    const eventTime = new Date(event.timestamp).getTime();
-    if (Number.isFinite(fromTime) && eventTime < fromTime) return false;
-    if (Number.isFinite(toTime) && eventTime > toTime) return false;
-    if (params.type && event.type !== params.type) return false;
-    if (params.employee_id && String(event.employee_id) !== String(params.employee_id)) return false;
-    return true;
-  });
-  const total = rows.length;
-  const limit = Number(params.limit || total || 0);
-  const offset = Number(params.offset || 0);
-  if (Number.isFinite(limit) && limit > 0) {
-    rows = rows.slice(offset, offset + limit);
-  } else if (offset > 0) {
-    rows = rows.slice(offset);
-  }
-  return { rows, total };
-}
-
-function localPreviewInside() {
-  if (!state.localPreview) return [];
-  const lastByEmployee = new Map();
-  [...state.localPreview.events]
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-    .forEach((event) => {
-      if (!event.employee_id) return;
-      if (event.type === "entrada" || event.type === "saida") {
-        lastByEmployee.set(event.employee_id, event.type);
-      }
-    });
-  return state.localPreview.employees.filter((employee) => lastByEmployee.get(employee.id) === "entrada");
-}
-
-function localPreviewStay(date) {
-  if (!state.localPreview || !date) return { date, employees: [] };
-  const dayStart = new Date(`${date}T00:00:00`);
-  const dayEnd = new Date(`${date}T23:59:59.999`);
-  if (Number.isNaN(dayStart.getTime()) || Number.isNaN(dayEnd.getTime())) return { date, employees: [] };
-
-  const rows = state.localPreview.employees.map((employee) => {
-    const employeeEvents = state.localPreview.events
-      .filter((event) => event.employee_id === employee.id)
-      .filter((event) => {
-        const t = new Date(event.timestamp).getTime();
-        return t >= dayStart.getTime() && t <= dayEnd.getTime();
-      })
-      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-    const sessions = [];
-    let openEntry = null;
-    employeeEvents.forEach((event) => {
-      if (event.type === "entrada") openEntry = event.timestamp;
-      if (event.type === "saida" && openEntry) {
-        sessions.push({ entrada: openEntry, saida: event.timestamp });
-        openEntry = null;
-      }
-    });
-    if (openEntry) sessions.push({ entrada: openEntry, sem_saida: true });
-
-    const total_seconds = sessions.reduce((acc, session) => {
-      if (session.sem_saida) return acc;
-      const inTs = new Date(session.entrada).getTime();
-      const outTs = new Date(session.saida).getTime();
-      if (Number.isNaN(inTs) || Number.isNaN(outTs) || outTs < inTs) return acc;
-      return acc + Math.floor((outTs - inTs) / 1000);
-    }, 0);
-
-    return { id: employee.id, name: employee.name, total_seconds, sessions };
-  });
-
-  return { date, employees: rows.filter((row) => row.sessions.length > 0) };
-}
-
 function eventActor(event) {
   const employee = employeeById(event.employee_id);
   if (event.employee_name || employee) {
@@ -375,13 +273,11 @@ function buildEventsQuery(params = {}) {
 }
 
 async function fetchEvents(params = {}) {
-  if (state.localPreview) return localPreviewEvents(params);
   const { data, headers } = await api(`/api/events${buildEventsQuery(params)}`);
   return { rows: Array.isArray(data) ? data : [], total: Number(headers.get("X-Total-Count") || 0) };
 }
 
 async function fetchInside() {
-  if (state.localPreview) return localPreviewInside();
   const { data } = await api("/api/events/inside");
   return Array.isArray(data) ? data : [];
 }
@@ -420,10 +316,21 @@ function renderRecentEvents(targetId, events) {
 function renderAlerts(targetId, emptyId, alerts) {
   const list = document.getElementById(targetId);
   if (!list) return;
-  list.innerHTML = alerts
-    .map((event) => {
+  const grouped = new Map();
+  alerts.forEach((event) => {
+    const key = `${event.type}:${event.employee_id || ""}:${event.rfid_tag || ""}`;
+    const current = grouped.get(key);
+    if (!current) {
+      grouped.set(key, { event, count: 1 });
+      return;
+    }
+    current.count += 1;
+  });
+  list.innerHTML = [...grouped.values()]
+    .map(({ event, count }) => {
       const level = event.type === "tentativa_invasao" ? "alert-high" : "alert-medium";
-      return `<li class="${level}">${escapeHtml(EVENT_LABEL[event.type])} - ${escapeHtml(eventActor(event))} (${escapeHtml(formatDateTime(event.timestamp))})</li>`;
+      const repeated = count > 1 ? ` x${count}` : "";
+      return `<li class="${level}">${escapeHtml(EVENT_LABEL[event.type])} - ${escapeHtml(eventActor(event))}${repeated} (${escapeHtml(formatDateTime(event.timestamp))})</li>`;
     })
     .join("");
   document.getElementById(emptyId).hidden = alerts.length > 0;
@@ -503,7 +410,7 @@ async function refreshDashboard() {
   try {
     const from = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const [eventsResponse, insideRows] = await Promise.all([
-      fetchEvents({ from, limit: 150 }),
+      fetchEvents({ from, limit: 1000 }),
       fetchInside(),
     ]);
     const counts = countsByType(eventsResponse.rows);
@@ -548,9 +455,23 @@ function renderMonitoring(events, insideRows) {
   setText("monitoring-inside-count", String(insideRows.length));
   setText("monitoring-inside-pill", String(insideRows.length));
 
+  const latestEntryByEmployee = new Map();
+  [...events]
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+    .forEach((event) => {
+      if (!event.employee_id) return;
+      if (event.type === "entrada") latestEntryByEmployee.set(event.employee_id, event.timestamp);
+      if (event.type === "saida") latestEntryByEmployee.delete(event.employee_id);
+    });
+
   const insideList = document.getElementById("inside-list");
   insideList.innerHTML = insideRows
-    .map((employee) => `<li>${escapeHtml(employee.name)} (${escapeHtml(employee.registration_id)})</li>`)
+    .map((employee) => {
+      const entryTime = latestEntryByEmployee.get(employee.id);
+      const enteredAt = entryTime ? formatDateTime(entryTime) : "Indisponível";
+      const elapsed = entryTime ? formatElapsedFrom(entryTime) : "Indisponível";
+      return `<li>${escapeHtml(employee.name)} (${escapeHtml(employee.registration_id)}) — Entrada: ${escapeHtml(enteredAt)} — Tempo: ${escapeHtml(elapsed)}</li>`;
+    })
     .join("");
   document.getElementById("inside-empty").hidden = insideRows.length > 0;
   const alerts = recentAlerts(events);
@@ -565,7 +486,7 @@ async function refreshMonitoring() {
   setStatusBadge("monitoring-status", "Atualizando...", "status-neutral");
   showMessage("monitoring-error", "");
   try {
-    const [eventsResponse, insideRows] = await Promise.all([fetchEvents({ limit: 60 }), fetchInside()]);
+    const [eventsResponse, insideRows] = await Promise.all([fetchEvents({ limit: 1000 }), fetchInside()]);
     renderMonitoring(eventsResponse.rows, insideRows);
     setStatusBadge("monitoring-status", `Atualizado às ${new Date().toLocaleTimeString("pt-BR")}`, "status-success");
   } catch (error) {
@@ -591,7 +512,7 @@ function employeePayload() {
   employeeFields.forEach((field) => {
     payload[field] = employeeForm.elements[field].value.trim();
   });
-  payload.rfid_tag = payload.rfid_tag || null;
+  payload.rfid_tag = payload.rfid_tag ? payload.rfid_tag.toUpperCase() : null;
   payload.has_room_access = employeeForm.elements.has_room_access.checked;
   payload.is_active = employeeForm.elements.is_active.checked;
   return payload;
@@ -666,13 +587,6 @@ function populateEmployeeSelects() {
 }
 
 async function loadEmployees() {
-  if (state.localPreview) {
-    state.employees = [...state.localPreview.employees];
-    showMessage("employees-feedback", "Modo pré-visualização local ativo.");
-    renderEmployeeRows();
-    populateEmployeeSelects();
-    return;
-  }
   try {
     const { data } = await api("/api/employees");
     state.employees = Array.isArray(data) ? data : [];
@@ -685,22 +599,6 @@ async function loadEmployees() {
 }
 
 async function editEmployee(employeeId) {
-  if (state.localPreview) {
-    const data = state.employees.find((employee) => employee.id === employeeId);
-    if (!data) return;
-    resetEmployeeForm();
-    state.editingEmployeeId = employeeId;
-    employeeFields.forEach((field) => {
-      employeeForm.elements[field].value = data[field] ?? "";
-    });
-    employeeForm.elements.has_room_access.checked = Boolean(data.has_room_access);
-    employeeForm.elements.is_active.checked = Boolean(data.is_active);
-    setText("employee-form-title", `Editando: ${data.name}`);
-    setText("btn-employee-submit", "Salvar");
-    document.getElementById("btn-employee-cancel").hidden = false;
-    employeeForm.elements.name.focus();
-    return;
-  }
   try {
     const { data } = await api(`/api/employees/${employeeId}`);
     resetEmployeeForm();
@@ -723,13 +621,6 @@ async function deleteEmployee(employeeId) {
   const employee = state.employees.find((item) => item.id === employeeId);
   if (!employee) return;
   if (!confirm(`Excluir ${employee.name}?`)) return;
-  if (state.localPreview) {
-    state.localPreview.employees = state.localPreview.employees.filter((item) => item.id !== employeeId);
-    state.localPreview.events = state.localPreview.events.filter((event) => event.employee_id !== employeeId);
-    if (state.editingEmployeeId === employeeId) resetEmployeeForm();
-    await loadEmployees();
-    return;
-  }
   try {
     await api(`/api/employees/${employeeId}`, { method: "DELETE" });
     if (state.editingEmployeeId === employeeId) resetEmployeeForm();
@@ -745,21 +636,28 @@ function logsFiltersParams() {
     to: toIsoWithTimezone(document.getElementById("logs-to").value),
     type: document.getElementById("logs-type").value,
     employee_id: document.getElementById("logs-employee").value,
-    limit: state.logs.limit,
-    offset: state.logs.offset,
   };
 }
 
-function renderLogs() {
+function currentSearchedLogsRows() {
   const search = document.getElementById("logs-search").value.trim().toLowerCase();
-  const rows = state.logs.rows.filter((event) => {
+  return state.logs.rows.filter((event) => {
     if (!search) return true;
     const employee = employeeById(event.employee_id);
     const source = `${event.source || ""} ${event.rfid_tag || ""} ${event.employee_name || ""} ${employee?.registration_id || ""}`.toLowerCase();
     return source.includes(search);
   });
+}
+
+function renderLogs() {
+  const rows = currentSearchedLogsRows();
+  state.logs.total = rows.length;
+  const pages = Math.max(1, Math.ceil(state.logs.total / state.logs.limit));
+  const maxOffset = Math.max(0, (pages - 1) * state.logs.limit);
+  if (state.logs.offset > maxOffset) state.logs.offset = maxOffset;
+  const pageRows = rows.slice(state.logs.offset, state.logs.offset + state.logs.limit);
   const body = document.getElementById("logs-body");
-  body.innerHTML = rows
+  body.innerHTML = pageRows
     .map(
       (event) => `
       <tr>
@@ -772,10 +670,9 @@ function renderLogs() {
     `,
     )
     .join("");
-  document.getElementById("logs-empty").hidden = rows.length > 0;
+  document.getElementById("logs-empty").hidden = pageRows.length > 0;
 
   const page = Math.floor(state.logs.offset / state.logs.limit) + 1;
-  const pages = Math.max(1, Math.ceil(state.logs.total / state.logs.limit));
   setText("logs-page-info", `Página ${page} de ${pages}`);
   document.getElementById("logs-prev").disabled = state.logs.offset === 0;
   document.getElementById("logs-next").disabled = state.logs.offset + state.logs.limit >= state.logs.total;
@@ -786,10 +683,9 @@ async function loadLogs() {
   state.isRefreshing.logs = true;
   showMessage("logs-feedback", "");
   try {
-    const params = logsFiltersParams();
+    const params = { ...logsFiltersParams(), limit: 1000, offset: 0 };
     const response = await fetchEvents(params);
     state.logs.rows = response.rows;
-    state.logs.total = response.total;
     renderLogs();
   } catch (error) {
     showMessage("logs-feedback", error.message);
@@ -865,10 +761,11 @@ function renderReportChart(events) {
 function renderReportRanking(events) {
   const ranking = new Map();
   events.forEach((event) => {
-    if (event.type !== "acesso_negado" || !event.employee_id) return;
+    if (event.type !== "acesso_negado" && event.type !== "tentativa_invasao") return;
     const employee = employeeById(event.employee_id);
-    if (!employee) return;
-    const key = `${employee.id}:${employee.name}`;
+    const key = employee
+      ? `emp:${employee.id}:${employee.name}`
+      : `tag:${event.rfid_tag || "desconhecida"}:TAG ${event.rfid_tag || "desconhecida"}`;
     ranking.set(key, (ranking.get(key) || 0) + 1);
   });
   const rows = [...ranking.entries()]
@@ -878,7 +775,7 @@ function renderReportRanking(events) {
   const target = document.getElementById("report-ranking");
   target.innerHTML = rows
     .map(({ key, count }) => {
-      const [, name] = key.split(":");
+      const [, , name] = key.split(":");
       return `<li>${escapeHtml(name)} - ${count} tentativa(s)</li>`;
     })
     .join("");
@@ -917,9 +814,7 @@ async function loadReports() {
     const reportsDate = document.getElementById("reports-date").value;
     const [eventsResponse, stayResponse] = await Promise.all([
       fetchEvents(reportParams),
-      state.localPreview
-        ? Promise.resolve(localPreviewStay(reportsDate))
-        : api(`/api/stay?date=${encodeURIComponent(reportsDate)}`).then((response) => response.data),
+      api(`/api/stay?date=${encodeURIComponent(reportsDate)}`).then((response) => response.data),
     ]);
     state.reportsCache = eventsResponse.rows;
     const counts = countsByType(eventsResponse.rows);
@@ -940,12 +835,6 @@ async function loadReports() {
 async function refreshDevices() {
   if (state.isRefreshing.devices) return;
   state.isRefreshing.devices = true;
-  if (state.localPreview) {
-    setStatusBadge("device-backend-status", "Preview local", "status-warning");
-    setText("device-backend-details", "Dados simulados no navegador para validação visual.");
-    state.isRefreshing.devices = false;
-    return;
-  }
   try {
     const { data } = await api("/api/health");
     setStatusBadge("device-backend-status", data?.status === "ok" ? "Online" : "Indefinido", "status-success");
@@ -987,46 +876,40 @@ function setupMenu() {
 }
 
 function setupEmployees() {
+  employeeForm.elements.rfid_tag.addEventListener("input", (event) => {
+    event.target.value = event.target.value.toUpperCase();
+  });
+
   employeeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     markEmployeeFormField("");
     showMessage("employee-form-feedback", "");
     const submitButton = document.getElementById("btn-employee-submit");
+    let payload = null;
     submitButton.disabled = true;
     submitButton.textContent = state.editingEmployeeId ? "Salvando..." : "Cadastrando...";
     try {
-      const payload = employeePayload();
-      if (state.localPreview) {
-        const duplicateRegistration = state.localPreview.employees.find(
-          (employee) => employee.registration_id.toLowerCase() === payload.registration_id.toLowerCase() && employee.id !== state.editingEmployeeId,
-        );
-        if (duplicateRegistration) throw new Error("registration_id already exists");
-        if (payload.rfid_tag) {
-          const duplicateRfid = state.localPreview.employees.find(
-            (employee) => String(employee.rfid_tag || "").toLowerCase() === payload.rfid_tag.toLowerCase() && employee.id !== state.editingEmployeeId,
-          );
-          if (duplicateRfid) throw new Error("rfid_tag already exists");
-        }
-        if (state.editingEmployeeId) {
-          state.localPreview.employees = state.localPreview.employees.map((employee) =>
-            employee.id === state.editingEmployeeId ? { ...employee, ...payload } : employee,
-          );
-        } else {
-          const nextId = Math.max(0, ...state.localPreview.employees.map((employee) => employee.id)) + 1;
-          state.localPreview.employees.push({ id: nextId, ...payload });
-        }
-      } else {
-        await api(state.editingEmployeeId ? `/api/employees/${state.editingEmployeeId}` : "/api/employees", {
-          method: state.editingEmployeeId ? "PATCH" : "POST",
-          body: JSON.stringify(payload),
-        });
-      }
+      payload = employeePayload();
+      await api(state.editingEmployeeId ? `/api/employees/${state.editingEmployeeId}` : "/api/employees", {
+        method: state.editingEmployeeId ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
+      });
       resetEmployeeForm();
       await loadEmployees();
       showMessage("employees-feedback", "Operação realizada com sucesso.");
     } catch (error) {
-      showMessage("employee-form-feedback", error.message);
-      markEmployeeFormField(error.message);
+      const owner = payload.rfid_tag
+        ? state.employees.find(
+          (employee) =>
+            String(employee.rfid_tag || "").toUpperCase() === payload.rfid_tag &&
+              employee.id !== state.editingEmployeeId,
+        )
+        : null;
+      const message = owner && String(error.message || "").includes("rfid_tag already exists")
+        ? `rfid_tag already exists (${owner.name})`
+        : error.message;
+      showMessage("employee-form-feedback", message);
+      markEmployeeFormField(message);
     } finally {
       submitButton.disabled = false;
       submitButton.textContent = state.editingEmployeeId ? "Salvar" : "Cadastrar";
@@ -1066,7 +949,10 @@ function setupLogs() {
     state.logs.offset = 0;
     loadLogs();
   });
-  document.getElementById("logs-search").addEventListener("input", renderLogs);
+  document.getElementById("logs-search").addEventListener("input", () => {
+    state.logs.offset = 0;
+    renderLogs();
+  });
   document.getElementById("logs-prev").addEventListener("click", () => {
     state.logs.offset = Math.max(0, state.logs.offset - state.logs.limit);
     loadLogs();
@@ -1076,12 +962,40 @@ function setupLogs() {
     loadLogs();
   });
   document.getElementById("btn-logs-export").addEventListener("click", () => {
-    const from = toIsoWithTimezone(document.getElementById("logs-from").value);
-    const to = toIsoWithTimezone(document.getElementById("logs-to").value);
-    const params = new URLSearchParams();
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
-    location.href = `/api/export/events.csv${params.toString() ? `?${params.toString()}` : ""}`;
+    const rows = currentSearchedLogsRows();
+    if (!rows.length) {
+      showMessage("logs-feedback", "Sem dados para exportar.");
+      return;
+    }
+    const csvValue = [
+      ["id", "timestamp", "tipo", "tag_rfid", "colaborador_id", "nome", "matricula", "origem"].join(","),
+      ...rows.map((event) => {
+        const employee = employeeById(event.employee_id);
+        const cols = [
+          event.id || "",
+          event.timestamp || "",
+          event.type || "",
+          event.rfid_tag || "",
+          event.employee_id || "",
+          event.employee_name || employee?.name || "",
+          employee?.registration_id || "",
+          event.source || "",
+        ];
+        return cols
+          .map((value) => {
+            const text = String(value);
+            return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+          })
+          .join(",");
+      }),
+    ].join("\n");
+    const blob = new Blob([csvValue], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "eventos-filtrados.csv";
+    link.click();
+    URL.revokeObjectURL(url);
   });
 }
 
@@ -1109,11 +1023,11 @@ function setupTopActions() {
     const alertsCard = document.getElementById("monitoring-alerts");
     if (alertsCard) alertsCard.scrollIntoView({ behavior: "smooth", block: "start" });
   });
-document.getElementById("btn-logout").addEventListener("click", async () => {
+  document.getElementById("btn-logout").addEventListener("click", async () => {
     try {
-      if (!state.localPreview) await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", { method: "POST" });
     } finally {
-  location.href = "/login";
+      location.href = "/login";
     }
   });
 }
@@ -1151,9 +1065,6 @@ async function bootstrap() {
   setDefaultDateFilters();
   startTopbarClock();
   resetEmployeeForm();
-  if (state.localPreview) {
-    setGlobalStatus("Pré-visualização local ativa", "status-warning");
-  }
   await loadEmployees();
   await Promise.all([refreshDashboard(), refreshMonitoring(), loadLogs(), loadReports(), refreshDevices()]);
   startPolling();
