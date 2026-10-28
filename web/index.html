@@ -3,15 +3,44 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IoT Porta</title>
+  <title>IoT Porta — Colaboradores</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header style="display:flex;justify-content:space-between;align-items:center">
+  <header>
     <h1>IoT Porta</h1>
-    <button id="btn-logout" style="padding:.4rem .8rem;cursor:pointer">Sair</button>
+    <button id="btn-logout" type="button">Sair</button>
   </header>
-  <p id="status">Verificando API...</p>
+
+  <main>
+    <h2 id="form-title">Novo colaborador</h2>
+    <form id="employee-form" novalidate>
+      <label>Nome *<input name="name"></label>
+      <label>Matrícula *<input name="registration_id"></label>
+      <label>Cargo *<input name="role"></label>
+      <label>Tag RFID<input name="rfid_tag" placeholder="opcional"></label>
+      <label class="check"><input type="checkbox" name="has_room_access"> Acesso à sala</label>
+      <label class="check"><input type="checkbox" name="is_active" checked> Ativo</label>
+      <p id="form-error" class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="submit" id="btn-submit">Cadastrar</button>
+        <button type="button" id="btn-cancel" hidden>Cancelar edição</button>
+      </div>
+    </form>
+
+    <h2>Colaboradores</h2>
+    <p id="list-error" class="error" role="alert" hidden></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th><th>Matrícula</th><th>Cargo</th><th>Tag RFID</th>
+          <th>Status</th><th>Acesso à sala</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="employee-list"></tbody>
+    </table>
+  </main>
+
   <script src="main.js"></script>
 </body>
 </html>
