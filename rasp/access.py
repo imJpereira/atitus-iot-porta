@@ -20,7 +20,9 @@ DEFAULT_API_BASE_URL = "http://127.0.0.1:5000"
 SOURCE = "raspberry_pi"
 DEFAULT_STATE_PATH = ROOT / "data" / "rasp_state.json"
 DEFAULT_CACHE_PATH = ROOT / "data" / "employees_cache.json"
+DEFAULT_QUEUE_PATH = ROOT / "data" / "events_queue.json"
 DEFAULT_SYNC_INTERVAL_SECONDS = 60.0
+DEFAULT_QUEUE_MAX_SIZE = 1000
 
 PATTERNS: dict[str, tuple[tuple[tuple[str, ...], float, float], ...]] = {
     "first_entry": (
@@ -141,6 +143,11 @@ def get_sync_interval(env_path: Path = ROOT / ".env") -> float:
     return float(os.environ.get("CACHE_SYNC_INTERVAL_SECONDS", DEFAULT_SYNC_INTERVAL_SECONDS))
 
 
+def get_queue_max_size(env_path: Path = ROOT / ".env") -> int:
+    load_env(env_path)
+    return int(os.environ.get("EVENT_QUEUE_MAX_SIZE", DEFAULT_QUEUE_MAX_SIZE))
+
+
 def fetch_employees(
     *,
     base_url: str | None = None,
@@ -191,13 +198,16 @@ class AccessController:
         sender: Callable[[dict[str, str]], object] | None = None,
         fetcher: Callable[[], list[dict]] | None = None,
         sync_interval: float | None = None,
+        queue_max_size: int | None = None,
         env_path: Path = ROOT / ".env",
         state_path: Path | None = DEFAULT_STATE_PATH,
         cache_path: Path | None = DEFAULT_CACHE_PATH,
+        queue_path: Path | None = DEFAULT_QUEUE_PATH,
     ) -> None:
         self.env_path = env_path
         self.state_path = state_path
         self.cache_path = cache_path
+        self.queue_path = queue_path
         self.pins = pins if pins is not None else get_pins(env_path)
         self.gpio = gpio
         self.clock = clock
@@ -205,12 +215,15 @@ class AccessController:
         self.display = display
         self.sender = sender or (lambda ev: send_event(ev, env_path=env_path))
         self.sync_interval = sync_interval if sync_interval is not None else get_sync_interval(env_path)
+        self.queue_max_size = queue_max_size if queue_max_size is not None else get_queue_max_size(env_path)
         self.updated_at: str | None = None
         self.last_sync_at: datetime | None = None
         self.current_date: str | None = None
         self.entered_today: set[str] = set()
         self.inside: set[str] = set()
+        self.pending_events: list[dict[str, str]] = []
         self._load_state()
+        self._load_queue()
 
         if employees is not None:
             self.fetcher = fetcher
@@ -267,6 +280,38 @@ class AccessController:
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"updated_at": self.updated_at, "employees": employees}
         self.cache_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def _load_queue(self) -> None:
+        if self.queue_path is None or not self.queue_path.is_file():
+            return
+        try:
+            data = json.loads(self.queue_path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.warning("Arquivo de fila inválido em %s; iniciando vazio", self.queue_path)
+            return
+        if isinstance(data, list):
+            self.pending_events = [ev for ev in data if isinstance(ev, dict)]
+
+    def _save_queue(self) -> None:
+        if self.queue_path is None:
+            return
+        self.queue_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.queue_path.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(self.pending_events, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, self.queue_path)
+
+    def _enqueue_event(self, event: dict[str, str]) -> None:
+        self.pending_events.append(event)
+        self._save_queue()
+        if len(self.pending_events) >= self.queue_max_size:
+            logger.warning(
+                "Fila local de eventos atingiu %d itens (limite configurado: %d); nenhum evento foi descartado",
+                len(self.pending_events),
+                self.queue_max_size,
+            )
 
     def update_employees(self, employees: list[dict]) -> None:
         self.employees_by_tag = index_employees(employees)
@@ -336,7 +381,8 @@ class AccessController:
         try:
             self.sender(event)
         except Exception:
-            logger.exception("Erro ao enviar evento de acesso ao backend")
+            logger.warning("Sem conexão com o backend; evento %s salvo na fila local", event["id"])
+            self._enqueue_event(event)
         return {"case": case, "message": message, "event": event}
 
 
