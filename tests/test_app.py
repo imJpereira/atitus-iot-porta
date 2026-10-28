@@ -42,12 +42,12 @@ def test_health_returns_ok(client):
 
 
 @pytest.mark.parametrize(("method", "url", "payload"), PI_REQUESTS)
-def test_pi_endpoints_reject_missing_key_and_do_not_write(app, method, url, payload):
+def test_pi_endpoints_reject_missing_key_and_do_not_write(app, admin_client, method, url, payload):
     anon = app.test_client()
     response = getattr(anon, method)(url, json=payload)
     assert response.status_code == 401
     assert response.get_json() == {"error": "unauthorized"}
-    assert anon.get("/api/events").get_json() == []
+    assert admin_client.get("/api/events").get_json() == []
 
 
 @pytest.mark.parametrize(("method", "url", "payload"), PI_REQUESTS)

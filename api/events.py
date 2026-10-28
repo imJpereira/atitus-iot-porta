@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
-from api import get_db, require_pi_key
+from api import get_db, require_admin, require_pi_key
 from api.employees import error, serialize
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
@@ -12,6 +12,7 @@ bp = Blueprint("events", __name__, url_prefix="/api/events")
 def check_pi_key():
     if request.method == "POST":
         return require_pi_key()
+    return require_admin()
 
 
 EVENT_TYPES = ("entrada", "saida", "acesso_negado", "tentativa_invasao")

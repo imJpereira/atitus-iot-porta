@@ -112,6 +112,8 @@ PROTECTED = [
     ("get", "/api/employees/1"),
     ("patch", "/api/employees/1"),
     ("delete", "/api/employees/1"),
+    ("get", "/api/events"),
+    ("get", "/api/events/inside"),
 ]
 
 
@@ -136,3 +138,19 @@ def test_pi_key_scope(client):
     # the Pi key opens the Pi route but not the admin ones
     assert client.get("/api/sync/employees").status_code == 200
     assert client.get("/api/employees").status_code == 401
+    assert client.get("/api/events").status_code == 401
+
+
+def test_session_allows_events_read(app, admin):
+    anon = app.test_client()
+    login(anon)
+    assert anon.get("/api/events").status_code == 200
+    assert anon.get("/api/events/inside").status_code == 200
+
+
+def test_pi_key_scope_events_post_needs_pi_key_not_session(app, admin):
+    event = {"id": "e1", "type": "entrada", "rfid_tag": "AA:BB", "timestamp": "2026-10-27T10:00:00Z", "source": "pi-1"}
+    web = app.test_client()
+    login(web)
+    assert web.post("/api/events", json=event).status_code == 401
+    assert web.post("/api/events/batch", json={"events": [event]}).status_code == 401

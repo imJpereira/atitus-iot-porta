@@ -34,8 +34,10 @@ def make_admin(app, username=ADMIN_USER, password=ADMIN_PASSWORD):
 
 
 @pytest.fixture
-def admin_client(app, client):
+def admin_client(app):
     """PI key header plus an admin session, for tests that exercise both sides."""
+    client = app.test_client()
+    client.environ_base["HTTP_X_API_KEY"] = TEST_API_KEY
     make_admin(app)
     response = client.post("/api/auth/login", json={"username": ADMIN_USER, "password": ADMIN_PASSWORD})
     assert response.status_code == 200
