@@ -25,12 +25,22 @@ Rotas administrativas (`/api/employees`, `GET /api/events*`, `/api/export/*`) ex
 - Se a Pi iniciar sem conexão e existir `data/employees_cache.json`, ela carrega o arquivo local e valida os crachás normalmente.
 - **Comportamento sem cache:** se a Pi iniciar sem conexão e não houver cache local, o estado é registrado em log e toda tag lida é negada (`acesso_negado`, LED amarelo + buzzer e aviso de cache indisponível), tentando reconectar a cada leitura/ciclo.
 
-## Fila Local de Eventos Offline (Raspberry Pi)
+## Fila Local de Eventos Offline e Sincronização (Raspberry Pi)
 
 - O feedback de LED e buzzer é emitido imediatamente após a leitura da tag, sem depender da resposta do backend.
 - Se o envio a `POST /api/events` falhar por falta de conexão, o evento é gravado na fila local persistente em `data/events_queue.json` (escrita atômica com `fsync` + `os.replace`, resistente a queda de energia e reinicializações).
 - Cada item da fila preserva `id` (UUID v4), `type`, `rfid_tag`, `timestamp` original da leitura em UTC (`Z`) e `source` (`raspberry_pi`), na ordem cronológica de ocorrência.
 - **Limite e aviso de fila cheia:** configurável via `EVENT_QUEUE_MAX_SIZE` (padrão `1000` eventos). Quando a quantidade de eventos pendentes atinge ou ultrapassa esse limite, o sistema registra um aviso (`WARNING`) no log indicando o total acumulado e o limite configurado — **nenhum evento antigo ou novo é descartado**.
+- **Sincronização automática ao reconectar:** quando há eventos na fila local, a Pi tenta reenviá-los automaticamente em ordem cronológica (FIFO) para `POST /api/events/batch` em lotes configuráveis por `EVENT_SYNC_BATCH_SIZE` (padrão `50`) e respeitando o intervalo entre tentativas `EVENT_SYNC_INTERVAL_SECONDS` (padrão `10` segundos).
+- **Confirmação incremental e idempotência:** cada lote confirmado pelo backend é imediatamente removido de `data/events_queue.json`; se a conexão cair no meio do envio, apenas os lotes não confirmados permanecem na fila para nova tentativa. Caso um evento já tenha sido recebido anteriormente, o backend ignora duplicatas pelo UUID (`INSERT OR IGNORE`).
+- **Operação contínua:** no loop principal do leitor (`run_access_loop`), o reenvio processa um lote por ciclo (`on_tick`), permitindo que novas leituras de crachá continuem sendo atendidas imediatamente durante a sincronização.
+
+## Limitações do MVP
+
+- **Relógio da Raspberry Pi (sem bateria RTC):** a Raspberry Pi não possui módulo RTC dedicado por padrão; se o dispositivo reiniciar totalmente sem acesso à rede (sem sincronização NTP), os timestamps dos eventos gerados até o retorno do NTP refletirão o relógio local salvo pela Pi (`fake-hwclock`).
+- **Armazenamento local em processo único:** os arquivos `data/employees_cache.json`, `data/rasp_state.json` e `data/events_queue.json` são dimensionados para um único processo controlador por porta/leitor RC522, sem concorrência multi-processo no mesmo arquivo.
+- **Sincronização cooperativa no loop principal:** o envio da fila ocorre de forma cooperativa em lotes curtos (`EVENT_SYNC_BATCH_SIZE`) entre varreduras do leitor RFID, evitando threads paralelas de escrita em disco e mantendo o tempo de resposta de leitura limitado pelo timeout HTTP de cada lote (`5s`).
+- **Estado de alternância local por leitor:** a classificação offline entre `entrada` e `saida` utiliza o estado local da própria Raspberry Pi (`data/rasp_state.json`), assumindo um único ponto de controle para a sala monitorada.
 
 ## Tempo de permanência
 
