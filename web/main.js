@@ -31,6 +31,64 @@ function setText(id, text) {
   if (el) el.textContent = text;
 }
 
+function getSessionUsername() {
+  const fromStorage = sessionStorage.getItem("argosAdminUsername");
+  if (fromStorage) return fromStorage;
+  const fallback = document.getElementById("session-user")?.textContent?.trim();
+  return fallback || "admin";
+}
+
+function setupSessionCard() {
+  const trigger = document.getElementById("btn-session-card");
+  const popover = document.getElementById("session-popover");
+  if (!trigger || !popover) return;
+
+  const username = getSessionUsername();
+  setText("session-user", username);
+
+  const key = `argos_admin_access_meta_${username.toLowerCase()}`;
+  const now = new Date().toISOString();
+  const persisted = JSON.parse(localStorage.getItem(key) || "{}");
+  const firstAccess = persisted.firstAccess || now;
+  const lastAccess = persisted.lastAccess || null;
+  const totalAccess = Number(persisted.totalAccess || 0) + 1;
+  localStorage.setItem(
+    key,
+    JSON.stringify({
+      firstAccess,
+      lastAccess: now,
+      totalAccess,
+    }),
+  );
+
+  setText("session-first-access", formatDateTime(firstAccess));
+  setText("session-last-access", lastAccess ? formatDateTime(lastAccess) : "Primeiro acesso");
+  setText("session-current-access", formatDateTime(now));
+  setText("session-total-access", String(totalAccess));
+
+  const close = () => {
+    popover.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const isOpening = popover.hidden;
+    popover.hidden = !isOpening;
+    trigger.setAttribute("aria-expanded", isOpening ? "true" : "false");
+  });
+
+  document.addEventListener("click", (event) => {
+    if (popover.hidden) return;
+    if (trigger.contains(event.target) || popover.contains(event.target)) return;
+    close();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -752,6 +810,7 @@ function setDefaultDateFilters() {
 }
 
 async function bootstrap() {
+  setupSessionCard();
   setupMenu();
   setupEmployees();
   setupLogs();
