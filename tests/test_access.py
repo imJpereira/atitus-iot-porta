@@ -513,3 +513,136 @@ def test_periodic_sync_applies_permission_changes_and_preserves_cache_on_failure
     saved = json.loads(cache_file.read_text(encoding="utf-8"))
     assert saved["updated_at"] == "2026-10-28T12:00:35Z"
     assert saved["employees"][0]["has_room_access"] is True
+
+
+def test_offline_event_queued_with_original_uuid_timestamp_and_immediate_feedback(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    queue_file = tmp_path / "events_queue.json"
+    gpio = FakeGPIO()
+    order: list[str] = []
+
+    def tracking_sleep(_seconds: float) -> None:
+        if "feedback" not in order:
+            order.append("feedback")
+
+    def failing_sender(_event: dict) -> None:
+        order.append("sender")
+        raise OSError("connection refused")
+
+    moment = datetime(2026, 10, 28, 14, 30, 0, tzinfo=timezone.utc)
+    controller = AccessController(
+        EMPLOYEES,
+        gpio=gpio,
+        clock=lambda: moment,
+        sleep=tracking_sleep,
+        display=lambda _: order.append("display"),
+        sender=failing_sender,
+        env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
+        queue_path=queue_file,
+    )
+
+    res = controller.handle_tag("tag-ativa")
+    # Feedback visual/sonoro e mensagem ocorrem antes da tentativa de envio ao backend
+    assert order == ["display", "feedback", "sender"]
+    assert (12, 1) in outputs_for(gpio) and (14, 1) in outputs_for(gpio)
+
+    # Evento salvo na fila em memória e em disco com UUID, tipo, tag e timestamp originais
+    assert len(controller.pending_events) == 1
+    queued = controller.pending_events[0]
+    assert queued == res["event"]
+    UUID(queued["id"])
+    assert queued["rfid_tag"] == "TAG-ATIVA"
+    assert queued["type"] == "entrada"
+    assert queued["timestamp"] == "2026-10-28T14:30:00Z"
+    assert queued["source"] == "raspberry_pi"
+
+    on_disk = json.loads(queue_file.read_text(encoding="utf-8"))
+    assert on_disk == [queued]
+
+
+def test_pending_events_persist_across_controller_restarts(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    queue_file = tmp_path / "events_queue.json"
+    state_file = tmp_path / "state.json"
+    env_file = tmp_path / "no.env"
+
+    def failing_sender(_ev: dict) -> None:
+        raise OSError("network down")
+
+    c1 = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=failing_sender,
+        env_path=env_file,
+        state_path=state_file,
+        queue_path=queue_file,
+    )
+    r1 = c1.handle_tag("TAG-ATIVA")
+    r2 = c1.handle_tag("FF:EE:DD")
+    assert len(c1.pending_events) == 2
+
+    # Reinicializa o controlador com eventos pendentes e grava mais um evento offline
+    c2 = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: datetime(2026, 10, 28, 12, 5, 0, tzinfo=timezone.utc),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=failing_sender,
+        env_path=env_file,
+        state_path=state_file,
+        queue_path=queue_file,
+    )
+    assert c2.pending_events == [r1["event"], r2["event"]]
+
+    r3 = c2.handle_tag("TAG-ATIVA")
+    assert c2.pending_events == [r1["event"], r2["event"], r3["event"]]
+    saved = json.loads(queue_file.read_text(encoding="utf-8"))
+    assert [e["id"] for e in saved] == [r1["event"]["id"], r2["event"]["id"], r3["event"]["id"]]
+
+
+def test_queue_limit_logs_warning_without_discarding_events(monkeypatch, tmp_path, caplog):
+    clear_pin_env(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text("EVENT_QUEUE_MAX_SIZE=2\n", encoding="utf-8")
+    monkeypatch.delenv("EVENT_QUEUE_MAX_SIZE", raising=False)
+    queue_file = tmp_path / "events_queue.json"
+
+    moments = iter([
+        datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 10, 28, 12, 1, 0, tzinfo=timezone.utc),
+        datetime(2026, 10, 28, 12, 2, 0, tzinfo=timezone.utc),
+    ])
+
+    def failing_sender(_ev: dict) -> None:
+        raise OSError("offline")
+
+    controller = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: next(moments),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=failing_sender,
+        env_path=env_file,
+        state_path=tmp_path / "state.json",
+        queue_path=queue_file,
+    )
+    assert controller.queue_max_size == 2
+
+    e1 = controller.handle_tag("TAG-ATIVA")["event"]
+    assert "limite configurado: 2" not in caplog.text
+
+    e2 = controller.handle_tag("TAG-SEM-ACESSO")["event"]
+    assert "Fila local de eventos atingiu 2 itens (limite configurado: 2)" in caplog.text
+
+    e3 = controller.handle_tag("FF:EE:DD")["event"]
+    assert "Fila local de eventos atingiu 3 itens (limite configurado: 2)" in caplog.text
+
+    # Nenhum evento antigo ou novo é descartado
+    assert controller.pending_events == [e1, e2, e3]
+    assert json.loads(queue_file.read_text(encoding="utf-8")) == [e1, e2, e3]

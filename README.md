@@ -25,6 +25,13 @@ Rotas administrativas (`/api/employees`, `GET /api/events*`, `/api/export/*`) ex
 - Se a Pi iniciar sem conexão e existir `data/employees_cache.json`, ela carrega o arquivo local e valida os crachás normalmente.
 - **Comportamento sem cache:** se a Pi iniciar sem conexão e não houver cache local, o estado é registrado em log e toda tag lida é negada (`acesso_negado`, LED amarelo + buzzer e aviso de cache indisponível), tentando reconectar a cada leitura/ciclo.
 
+## Fila Local de Eventos Offline (Raspberry Pi)
+
+- O feedback de LED e buzzer é emitido imediatamente após a leitura da tag, sem depender da resposta do backend.
+- Se o envio a `POST /api/events` falhar por falta de conexão, o evento é gravado na fila local persistente em `data/events_queue.json` (escrita atômica com `fsync` + `os.replace`, resistente a queda de energia e reinicializações).
+- Cada item da fila preserva `id` (UUID v4), `type`, `rfid_tag`, `timestamp` original da leitura em UTC (`Z`) e `source` (`raspberry_pi`), na ordem cronológica de ocorrência.
+- **Limite e aviso de fila cheia:** configurável via `EVENT_QUEUE_MAX_SIZE` (padrão `1000` eventos). Quando a quantidade de eventos pendentes atinge ou ultrapassa esse limite, o sistema registra um aviso (`WARNING`) no log indicando o total acumulado e o limite configurado — **nenhum evento antigo ou novo é descartado**.
+
 ## Tempo de permanência
 
 `GET /api/stay?date=YYYY-MM-DD[&employee_id=N]` (admin) devolve, por colaborador, as sessões do dia e `total_seconds`. `date` é obrigatório (400 se inválido); `employee_id` é opcional (400 se não for inteiro positivo, 404 se não existir).
