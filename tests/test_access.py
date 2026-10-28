@@ -9,6 +9,7 @@ from rasp.access import (
     fetch_employees,
     run_access_loop,
     send_event,
+    send_events_batch,
 )
 from rasp.test_hardware import DEFAULT_PINS
 from tests.test_hardware import FakeGPIO
@@ -646,3 +647,240 @@ def test_queue_limit_logs_warning_without_discarding_events(monkeypatch, tmp_pat
     # Nenhum evento antigo ou novo é descartado
     assert controller.pending_events == [e1, e2, e3]
     assert json.loads(queue_file.read_text(encoding="utf-8")) == [e1, e2, e3]
+
+
+def test_reconnect_flushes_queue_in_chronological_order_and_handles_midway_failure(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text("EVENT_SYNC_INTERVAL_SECONDS=10\nEVENT_SYNC_BATCH_SIZE=2\n", encoding="utf-8")
+    monkeypatch.delenv("EVENT_SYNC_INTERVAL_SECONDS", raising=False)
+    monkeypatch.delenv("EVENT_SYNC_BATCH_SIZE", raising=False)
+    queue_file = tmp_path / "events_queue.json"
+
+    online = False
+    fail_second_batch = True
+    received_batches: list[list[dict]] = []
+
+    def flaky_single_sender(event: dict) -> None:
+        if not online:
+            raise OSError("offline")
+        received_batches.append([event])
+
+    def flaky_batch_sender(batch: list[dict]) -> None:
+        nonlocal fail_second_batch
+        if not online:
+            raise OSError("offline")
+        if len(received_batches) == 1 and fail_second_batch:
+            fail_second_batch = False
+            raise OSError("connection reset during 2nd batch")
+        received_batches.append(list(batch))
+
+    t0 = datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc)
+    moments = iter([
+        datetime(2026, 10, 28, 12, 0, 1, tzinfo=timezone.utc),   # e1 (offline)
+        datetime(2026, 10, 28, 12, 0, 2, tzinfo=timezone.utc),   # e2 (offline)
+        datetime(2026, 10, 28, 12, 0, 3, tzinfo=timezone.utc),   # e3 (offline)
+    ])
+
+    controller = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: next(moments, t0),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=flaky_single_sender,
+        batch_sender=flaky_batch_sender,
+        env_path=env_file,
+        state_path=tmp_path / "state.json",
+        queue_path=queue_file,
+    )
+    assert controller.event_sync_interval == 10.0
+    assert controller.event_sync_batch_size == 2
+
+    e1 = controller.handle_tag("TAG-ATIVA")["event"]
+    e2 = controller.handle_tag("TAG-SEM-ACESSO")["event"]
+    e3 = controller.handle_tag("FF:EE:DD")["event"]
+    assert [e["id"] for e in controller.pending_events] == [e1["id"], e2["id"], e3["id"]]
+
+    # Tentativa antes do intervalo de 10s (aos t=8s) -> não tenta reenviar ainda
+    controller.maybe_sync(datetime(2026, 10, 28, 12, 0, 8, tzinfo=timezone.utc), max_batches=None)
+    assert received_batches == []
+    assert len(controller.pending_events) == 3
+
+    # Conexão volta aos t=15s (>= 10s): 1º lote [e1, e2] confirma, 2º lote [e3] falha no meio
+    online = True
+    controller.maybe_sync(datetime(2026, 10, 28, 12, 0, 15, tzinfo=timezone.utc), max_batches=None)
+    assert received_batches == [[e1, e2]]
+    assert controller.pending_events == [e3]
+    assert json.loads(queue_file.read_text(encoding="utf-8")) == [e3]
+
+    # Antes de 10s desde a falha (aos t=20s) -> aguarda intervalo
+    controller.maybe_sync(datetime(2026, 10, 28, 12, 0, 20, tzinfo=timezone.utc), max_batches=None)
+    assert controller.pending_events == [e3]
+
+    # Após 10s desde a falha (aos t=26s) -> reenvia o restante [e3] e limpa a fila
+    controller.maybe_sync(datetime(2026, 10, 28, 12, 0, 26, tzinfo=timezone.utc), max_batches=None)
+    assert received_batches == [[e1, e2], [e3]]
+    assert controller.pending_events == []
+    assert json.loads(queue_file.read_text(encoding="utf-8")) == []
+
+
+def test_new_badge_reads_are_served_during_background_sync_in_loop(monkeypatch, tmp_path):
+    clear_pin_env(monkeypatch)
+    queue_file = tmp_path / "events_queue.json"
+    e1 = build_event("TAG-ATIVA", "entrada", datetime(2026, 10, 28, 11, 58, 0, tzinfo=timezone.utc), event_id="ev-1")
+    e2 = build_event("TAG-ATIVA", "saida", datetime(2026, 10, 28, 11, 59, 0, tzinfo=timezone.utc), event_id="ev-2")
+    queue_file.write_text(json.dumps([e1, e2]), encoding="utf-8")
+
+    # Na inicialização ainda está offline; fica online durante o loop
+    online = False
+    timeline: list[str] = []
+
+    def batch_sender(batch: list[dict]) -> None:
+        if not online:
+            raise OSError("offline on init")
+        for ev in batch:
+            timeline.append(f"sync:{ev['id']}")
+
+    def single_sender(ev: dict) -> None:
+        timeline.append(f"live:{ev['id']}")
+
+    moments = iter([
+        datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),   # init sync fails
+        datetime(2026, 10, 28, 12, 0, 15, tzinfo=timezone.utc),  # tick 1 -> sends batch 1 (ev-1)
+        datetime(2026, 10, 28, 12, 0, 16, tzinfo=timezone.utc),  # read 1 during sync -> TAG-ATIVA
+        datetime(2026, 10, 28, 12, 0, 17, tzinfo=timezone.utc),  # tick 2 -> sends batch 2 (ev-2)
+        datetime(2026, 10, 28, 12, 0, 18, tzinfo=timezone.utc),  # tick 3 -> sends batch 3 (new tag read)
+    ])
+
+    controller = AccessController(
+        EMPLOYEES,
+        gpio=FakeGPIO(),
+        clock=lambda: next(moments),
+        sleep=lambda _: None,
+        display=lambda msg: timeline.append(f"display:{msg}"),
+        sender=single_sender,
+        batch_sender=batch_sender,
+        event_sync_interval=10.0,
+        event_sync_batch_size=1,
+        env_path=tmp_path / "no.env",
+        state_path=tmp_path / "state.json",
+        queue_path=queue_file,
+    )
+    assert len(controller.pending_events) == 2
+
+    online = True
+    reader = SequenceReader(["TAG-ATIVA", None, None])
+    run_access_loop(
+        controller=controller,
+        reader=reader,
+        debounce_seconds=3.0,
+        poll_interval=0,
+        max_iterations=3,
+        env_path=tmp_path / "no.env",
+    )
+
+    # Durante a sincronização por lotes (1 por tick), a leitura do crachá no tick 1 foi atendida imediatamente
+    assert timeline[0] == "sync:ev-1"
+    assert timeline[1] == "display:Bem-vindo, Ana Silva"
+    assert timeline[2] == "sync:ev-2"
+    assert timeline[3].startswith("sync:")
+    assert controller.pending_events == []
+
+
+def test_e2e_offline_to_online_sync_and_idempotency_with_flask_api(monkeypatch, tmp_path, app, admin_client):
+    clear_pin_env(monkeypatch)
+    monkeypatch.setenv("PI_API_KEY", "test-pi-key")
+    env_file = tmp_path / ".env"
+    env_file.write_text("PI_API_KEY=test-pi-key\nAPI_BASE_URL=http://local.test\n", encoding="utf-8")
+    queue_file = tmp_path / "events_queue.json"
+    cache_file = tmp_path / "employees_cache.json"
+    state_file = tmp_path / "state.json"
+
+    # Cadastra colaboradora na API real (SQLite)
+    emp = admin_client.post(
+        "/api/employees",
+        json={"name": "Ana Silva", "registration_id": "MAT-01", "rfid_tag": "TAG-ATIVA", "role": "Eng", "has_room_access": True},
+    ).get_json()
+
+    backend_up = True
+
+    class ClientResponse:
+        def __init__(self, resp):
+            self.resp = resp
+
+        def read(self):
+            return self.resp.get_data()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def flask_urlopen(req, timeout=0):
+        if not backend_up:
+            raise OSError("backend down")
+        path = req.full_url.removeprefix("http://local.test")
+        headers = {k: v for k, v in req.header_items()}
+        with app.test_client() as c:
+            resp = c.open(path, method=req.get_method(), headers=headers, data=req.data)
+        if resp.status_code >= 400:
+            raise OSError(f"HTTP {resp.status_code}")
+        return ClientResponse(resp)
+
+    moments = iter([
+        datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc),   # startup cache sync (online)
+        datetime(2026, 10, 28, 12, 1, 0, tzinfo=timezone.utc),   # 1st badge offline (entrada Ana)
+        datetime(2026, 10, 28, 12, 2, 0, tzinfo=timezone.utc),   # 2nd badge offline (invasão FF:EE:DD)
+        datetime(2026, 10, 28, 12, 3, 0, tzinfo=timezone.utc),   # 3rd badge offline (saída Ana)
+        datetime(2026, 10, 28, 12, 4, 0, tzinfo=timezone.utc),   # reconnect sync
+    ])
+
+    controller = AccessController(
+        gpio=FakeGPIO(),
+        clock=lambda: next(moments),
+        sleep=lambda _: None,
+        display=lambda _: None,
+        sender=lambda ev: send_event(ev, urlopen=flask_urlopen, env_path=env_file),
+        batch_sender=lambda batch: send_events_batch(batch, urlopen=flask_urlopen, env_path=env_file),
+        fetcher=lambda: fetch_employees(urlopen=flask_urlopen, env_path=env_file),
+        env_path=env_file,
+        state_path=state_file,
+        cache_path=cache_file,
+        queue_path=queue_file,
+    )
+    assert controller.has_cache is True
+
+    # 1. Derruba o backend e passa crachás
+    backend_up = False
+    r1 = controller.handle_tag("TAG-ATIVA")
+    r2 = controller.handle_tag("FF:EE:DD")
+    r3 = controller.handle_tag("TAG-ATIVA")
+    assert len(controller.pending_events) == 3
+    assert admin_client.get("/api/events").get_json() == []
+
+    # 2. Religa o backend e sincroniza a fila
+    backend_up = True
+    synced = controller.sync_pending_events()
+    assert synced == 3
+    assert controller.pending_events == []
+    assert json.loads(queue_file.read_text(encoding="utf-8")) == []
+
+    # 3. Confere os logs no backend (ordem decrescente de timestamp na listagem, todos presentes)
+    logs = admin_client.get("/api/events").get_json()
+    assert [e["id"] for e in logs] == [r3["event"]["id"], r2["event"]["id"], r1["event"]["id"]]
+    assert [e["type"] for e in logs] == ["saida", "tentativa_invasao", "entrada"]
+    assert logs[0]["employee_id"] == emp["id"]
+    assert logs[1]["employee_id"] is None
+    assert logs[2]["employee_id"] == emp["id"]
+
+    # 4. Idempotência: reenvios repetidos (em lote e individual) não duplicam registros no banco
+    res_batch_dup = send_events_batch(
+        [r1["event"], r2["event"], r3["event"]],
+        urlopen=flask_urlopen,
+        env_path=env_file,
+    )
+    assert res_batch_dup == {"received": 3, "created": 0}
+    send_event(r1["event"], urlopen=flask_urlopen, env_path=env_file)
+    assert len(admin_client.get("/api/events").get_json()) == 3

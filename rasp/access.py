@@ -23,6 +23,8 @@ DEFAULT_CACHE_PATH = ROOT / "data" / "employees_cache.json"
 DEFAULT_QUEUE_PATH = ROOT / "data" / "events_queue.json"
 DEFAULT_SYNC_INTERVAL_SECONDS = 60.0
 DEFAULT_QUEUE_MAX_SIZE = 1000
+DEFAULT_EVENT_SYNC_INTERVAL_SECONDS = 10.0
+DEFAULT_EVENT_SYNC_BATCH_SIZE = 50
 
 PATTERNS: dict[str, tuple[tuple[tuple[str, ...], float, float], ...]] = {
     "first_entry": (
@@ -148,6 +150,16 @@ def get_queue_max_size(env_path: Path = ROOT / ".env") -> int:
     return int(os.environ.get("EVENT_QUEUE_MAX_SIZE", DEFAULT_QUEUE_MAX_SIZE))
 
 
+def get_event_sync_interval(env_path: Path = ROOT / ".env") -> float:
+    load_env(env_path)
+    return float(os.environ.get("EVENT_SYNC_INTERVAL_SECONDS", DEFAULT_EVENT_SYNC_INTERVAL_SECONDS))
+
+
+def get_event_sync_batch_size(env_path: Path = ROOT / ".env") -> int:
+    load_env(env_path)
+    return max(1, int(os.environ.get("EVENT_SYNC_BATCH_SIZE", DEFAULT_EVENT_SYNC_BATCH_SIZE)))
+
+
 def fetch_employees(
     *,
     base_url: str | None = None,
@@ -185,6 +197,28 @@ def send_event(
         return json.loads(resp.read().decode("utf-8"))
 
 
+def send_events_batch(
+    events: list[dict[str, str]],
+    *,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    urlopen: Callable = urllib.request.urlopen,
+    env_path: Path = ROOT / ".env",
+) -> dict:
+    load_env(env_path)
+    url = (base_url or os.environ.get("API_BASE_URL") or DEFAULT_API_BASE_URL).rstrip("/")
+    key = api_key if api_key is not None else os.environ.get("PI_API_KEY", "")
+    data = json.dumps({"events": events}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{url}/api/events/batch",
+        data=data,
+        headers={"Content-Type": "application/json", "X-API-Key": key},
+        method="POST",
+    )
+    with urlopen(req, timeout=5) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 class AccessController:
     def __init__(
         self,
@@ -196,9 +230,12 @@ class AccessController:
         sleep: Callable[[float], None] = time.sleep,
         display: Callable[[str], None] = print,
         sender: Callable[[dict[str, str]], object] | None = None,
+        batch_sender: Callable[[list[dict[str, str]]], object] | None = None,
         fetcher: Callable[[], list[dict]] | None = None,
         sync_interval: float | None = None,
         queue_max_size: int | None = None,
+        event_sync_interval: float | None = None,
+        event_sync_batch_size: int | None = None,
         env_path: Path = ROOT / ".env",
         state_path: Path | None = DEFAULT_STATE_PATH,
         cache_path: Path | None = DEFAULT_CACHE_PATH,
@@ -214,10 +251,25 @@ class AccessController:
         self.sleep = sleep
         self.display = display
         self.sender = sender or (lambda ev: send_event(ev, env_path=env_path))
+        if batch_sender is not None:
+            self.batch_sender = batch_sender
+        elif sender is not None:
+            self.batch_sender = lambda batch: [self.sender(ev) for ev in batch]
+        else:
+            self.batch_sender = lambda batch: send_events_batch(batch, env_path=env_path)
         self.sync_interval = sync_interval if sync_interval is not None else get_sync_interval(env_path)
         self.queue_max_size = queue_max_size if queue_max_size is not None else get_queue_max_size(env_path)
+        self.event_sync_interval = (
+            event_sync_interval if event_sync_interval is not None else get_event_sync_interval(env_path)
+        )
+        self.event_sync_batch_size = (
+            max(1, event_sync_batch_size)
+            if event_sync_batch_size is not None
+            else get_event_sync_batch_size(env_path)
+        )
         self.updated_at: str | None = None
         self.last_sync_at: datetime | None = None
+        self.last_event_sync_at: datetime | None = None
         self.current_date: str | None = None
         self.entered_today: set[str] = set()
         self.inside: set[str] = set()
@@ -235,6 +287,8 @@ class AccessController:
             self.has_cache = False
             self._load_cache()
             self.sync_employees()
+        if self.pending_events:
+            self.sync_pending_events()
 
     def _load_state(self) -> None:
         if self.state_path is None or not self.state_path.is_file():
@@ -338,10 +392,46 @@ class AccessController:
         self._save_cache(employees)
         return True
 
-    def maybe_sync(self, moment: datetime | None = None) -> bool:
+    def _should_sync_events(self, now: datetime) -> bool:
+        if not self.pending_events:
+            return False
+        if self.last_event_sync_at is None:
+            return True
+        return (now - self.last_event_sync_at).total_seconds() >= self.event_sync_interval
+
+    def sync_pending_events(
+        self,
+        moment: datetime | None = None,
+        *,
+        max_batches: int | None = None,
+    ) -> int:
+        if not self.pending_events:
+            return 0
+        now = moment or self.clock()
+        sent_count = 0
+        batches_sent = 0
+        while self.pending_events and (max_batches is None or batches_sent < max_batches):
+            batch = list(self.pending_events[: self.event_sync_batch_size])
+            try:
+                self.batch_sender(batch)
+            except Exception:
+                self.last_event_sync_at = now
+                logger.warning(
+                    "Falha ao sincronizar lote de %d evento(s); %d permanecem na fila local",
+                    len(batch),
+                    len(self.pending_events),
+                )
+                break
+            del self.pending_events[: len(batch)]
+            self._save_queue()
+            sent_count += len(batch)
+            batches_sent += 1
+            self.last_event_sync_at = None
+        return sent_count
+
+    def _maybe_sync_employees(self, now: datetime) -> bool:
         if self.fetcher is None:
             return self.has_cache
-        now = moment or self.clock()
         if (
             not self.has_cache
             or self.last_sync_at is None
@@ -350,13 +440,22 @@ class AccessController:
             return self.sync_employees(now)
         return self.has_cache
 
+    def maybe_sync(self, moment: datetime | None = None, *, max_batches: int | None = 1) -> bool:
+        if self.fetcher is None and not self.pending_events:
+            return self.has_cache
+        now = moment or self.clock()
+        result = self._maybe_sync_employees(now)
+        if self._should_sync_events(now):
+            self.sync_pending_events(now, max_batches=max_batches)
+        return result
+
     def handle_tag(self, raw_tag: object) -> dict | None:
         tag = normalize_uid(raw_tag)
         if tag is None:
             return None
 
         moment = self.clock()
-        self.maybe_sync(moment)
+        self._maybe_sync_employees(moment)
         day = local_date(moment)
         if day != self.current_date:
             self.current_date = day
@@ -378,11 +477,17 @@ class AccessController:
         self.display(message)
         emit_feedback(case, gpio=self.gpio, pins=self.pins, sleep=self.sleep, env_path=self.env_path)
         event = build_event(tag, event_type, moment)
-        try:
-            self.sender(event)
-        except Exception:
-            logger.warning("Sem conexão com o backend; evento %s salvo na fila local", event["id"])
+        if self.pending_events:
             self._enqueue_event(event)
+            if self._should_sync_events(moment):
+                self.sync_pending_events(moment)
+        else:
+            try:
+                self.sender(event)
+            except Exception:
+                self.last_event_sync_at = moment
+                logger.warning("Sem conexão com o backend; evento %s salvo na fila local", event["id"])
+                self._enqueue_event(event)
         return {"case": case, "message": message, "event": event}
 
 
