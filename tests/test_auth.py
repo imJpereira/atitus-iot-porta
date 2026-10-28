@@ -114,6 +114,8 @@ PROTECTED = [
     ("delete", "/api/employees/1"),
     ("get", "/api/events"),
     ("get", "/api/events/inside"),
+    ("get", "/api/export/events.csv"),
+    ("get", "/api/export/events.json"),
 ]
 
 
@@ -154,3 +156,17 @@ def test_pi_key_scope_events_post_needs_pi_key_not_session(app, admin):
     login(web)
     assert web.post("/api/events", json=event).status_code == 401
     assert web.post("/api/events/batch", json={"events": [event]}).status_code == 401
+
+
+@pytest.mark.parametrize("route", ["/api/export/events.csv", "/api/export/events.json"])
+def test_session_allows_export(app, admin, route):
+    web = app.test_client()
+    login(web)
+    assert web.get(route).status_code == 200
+
+
+@pytest.mark.parametrize("route", ["/api/export/events.csv", "/api/export/events.json"])
+def test_old_admin_key_rejected(app, monkeypatch, route):
+    monkeypatch.setenv("ADMIN_API_KEY", "old-admin-key")
+    response = app.test_client().get(route, headers={"X-API-Key": "old-admin-key"})
+    assert response.status_code == 401

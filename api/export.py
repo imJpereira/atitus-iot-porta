@@ -4,12 +4,12 @@ import json
 
 from flask import Blueprint, Response, request
 
-from api import get_db, require_admin_key
+from api import get_db, require_admin
 from api.employees import error
 from api.events import parse_timestamp
 
 bp = Blueprint("export", __name__, url_prefix="/api/export")
-bp.before_request(require_admin_key)
+bp.before_request(require_admin)
 
 COLUMNS = ("id", "timestamp", "tipo", "tag_rfid", "colaborador_id", "nome", "matricula")
 

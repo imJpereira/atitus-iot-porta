@@ -19,10 +19,6 @@ def require_pi_key():
     return require_key("PI_API_KEY")
 
 
-def require_admin_key():
-    return require_key("ADMIN_API_KEY")
-
-
 def require_admin():
     if "admin_id" not in session:
         return jsonify(error="unauthorized"), 401

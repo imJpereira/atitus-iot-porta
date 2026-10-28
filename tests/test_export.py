@@ -4,20 +4,13 @@ import io
 import pandas as pd
 import pytest
 
-ADMIN_KEY = "test-admin-key"
 COLUMNS = ["id", "timestamp", "tipo", "tag_rfid", "colaborador_id", "nome", "matricula"]
 ROUTES = ["/api/export/events.csv", "/api/export/events.json"]
-ADMIN = {"X-API-Key": ADMIN_KEY}
 
 
 @pytest.fixture
 def client(admin_client):
     return admin_client
-
-
-@pytest.fixture(autouse=True)
-def admin_key(monkeypatch):
-    monkeypatch.setenv("ADMIN_API_KEY", ADMIN_KEY)
 
 
 def send(client, id, timestamp="2026-10-27T10:00:00Z", type="entrada", tag="AA:BB"):
@@ -34,13 +27,13 @@ def make_employee(client, name="José Ação", tag="AA:BB", registration_id="R1"
 
 
 def export_csv(client, **query):
-    response = client.get("/api/export/events.csv", headers=ADMIN, query_string=query)
+    response = client.get("/api/export/events.csv", query_string=query)
     assert response.status_code == 200
     return list(csv.reader(io.StringIO(response.get_data(as_text=True))))
 
 
 def export_json(client, **query):
-    response = client.get("/api/export/events.json", headers=ADMIN, query_string=query)
+    response = client.get("/api/export/events.json", query_string=query)
     assert response.status_code == 200
     return response.get_json()
 
@@ -142,7 +135,7 @@ def test_pandas_loads_csv_and_json_without_adjustments(client):
     make_employee(client)
     send(client, "e1")
     send(client, "e2", tag="ZZ:99", type="tentativa_invasao", timestamp="2026-10-27T11:00:00-03:00")
-    response = client.get("/api/export/events.csv", headers=ADMIN)
+    response = client.get("/api/export/events.csv")
     frame = pd.read_csv(io.BytesIO(response.data), parse_dates=["timestamp"])
     assert list(frame.columns) == COLUMNS
     assert pd.api.types.is_datetime64_any_dtype(frame["timestamp"])
@@ -169,7 +162,7 @@ def test_csv_quotes_commas_quotes_and_newlines(client):
 def test_csv_headers_utf8_without_bom_and_attachment(client):
     make_employee(client)
     send(client, "e1")
-    response = client.get("/api/export/events.csv", headers=ADMIN)
+    response = client.get("/api/export/events.csv")
     assert response.headers["Content-Type"] == "text/csv; charset=utf-8"
     assert response.headers["Content-Disposition"] == 'attachment; filename="eventos.csv"'
     assert not response.data.startswith(b"\xef\xbb\xbf")
@@ -178,34 +171,21 @@ def test_csv_headers_utf8_without_bom_and_attachment(client):
 
 
 @pytest.mark.parametrize("route", ROUTES)
-@pytest.mark.parametrize("headers", [{}, {"X-API-Key": ""}, {"X-API-Key": "wrong"}, {"X-API-Key": "test-pi-key"}])
-def test_unauthorized_without_valid_admin_key(client, route, headers):
+@pytest.mark.parametrize("headers", [{}, {"X-API-Key": "test-pi-key"}])
+def test_unauthorized_without_session(app, client, route, headers):
     make_employee(client)
     send(client, "e1")
-    response = client.get(route, headers=headers)
+    response = app.test_client().get(route, headers=headers)
     assert response.status_code == 401
     assert response.get_json() == {"error": "unauthorized"}
     assert b"AA:BB" not in response.data
 
 
 @pytest.mark.parametrize("route", ROUTES)
-@pytest.mark.parametrize("env_value", [None, ""])
-def test_unauthorized_when_admin_key_not_configured(client, monkeypatch, route, env_value):
-    send(client, "e1")
-    if env_value is None:
-        monkeypatch.delenv("ADMIN_API_KEY")
-    else:
-        monkeypatch.setenv("ADMIN_API_KEY", env_value)
-    response = client.get(route, headers={"X-API-Key": env_value or ""})
-    assert response.status_code == 401
-    assert response.get_json() == {"error": "unauthorized"}
-
-
-@pytest.mark.parametrize("route", ROUTES)
 @pytest.mark.parametrize("name", ["from", "to"])
 @pytest.mark.parametrize("value", ["2026-10-27", "2026-10-27T10:00:00", "ontem", ""])
 def test_bad_filter_is_400(client, route, name, value):
-    response = client.get(route, headers=ADMIN, query_string={name: value})
+    response = client.get(route, query_string={name: value})
     assert response.status_code == 400
     assert response.get_json()["error"]
 
@@ -214,15 +194,7 @@ def test_bad_filter_is_400(client, route, name, value):
 def test_bad_filter_accepts_raw_plus_in_offset(client, route):
     send(client, "before", timestamp="2026-10-27T09:59:59Z")
     send(client, "e1", timestamp="2026-10-27T10:00:00Z")
-    response = client.get(f"{route}?from=2026-10-27T11:00:00+01:00", headers=ADMIN)
+    response = client.get(f"{route}?from=2026-10-27T11:00:00+01:00")
     assert response.status_code == 200
     body = response.get_data(as_text=True)
     assert "e1" in body and "before" not in body
-
-
-def test_pi_endpoints_reject_admin_key(client):
-    event = {"id": "x", "type": "entrada", "rfid_tag": "AA:BB", "timestamp": "2026-10-27T10:00:00Z", "source": "pi-1"}
-    for url, method in (("/api/events", "post"), ("/api/sync/employees", "get")):
-        response = getattr(client, method)(url, headers=ADMIN, **({"json": event} if method == "post" else {}))
-        assert response.status_code == 401
-        assert response.get_json() == {"error": "unauthorized"}
