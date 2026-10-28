@@ -135,3 +135,11 @@ uv run python rasp/test_hardware.py
 ```
 
 *(Os pinos podem ser sobrescritos via variáveis de ambiente no arquivo `.env` conforme a tabela acima).*
+
+### Executar o Controle de Acesso
+
+Na Raspberry Pi, com `.env` configurado (`API_BASE_URL`, `PI_API_KEY` igual ao do backend):
+
+```bash
+uv run python -m rasp.access
+```
