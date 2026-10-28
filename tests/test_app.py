@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 
 from api import ROOT, create_app
+from tests.conftest import ADMIN_PASSWORD, ADMIN_USER, make_admin
 
 EVENT = {
     "id": "e1",
@@ -16,6 +17,11 @@ PI_REQUESTS = [
     ("post", "/api/events", EVENT),
     ("post", "/api/events/batch", {"events": [EVENT]}),
 ]
+
+
+@pytest.fixture
+def client(admin_client):
+    return admin_client
 
 
 def test_create_app_uses_given_database(tmp_path):
@@ -36,12 +42,12 @@ def test_health_returns_ok(client):
 
 
 @pytest.mark.parametrize(("method", "url", "payload"), PI_REQUESTS)
-def test_pi_endpoints_reject_missing_key_and_do_not_write(app, method, url, payload):
+def test_pi_endpoints_reject_missing_key_and_do_not_write(app, admin_client, method, url, payload):
     anon = app.test_client()
     response = getattr(anon, method)(url, json=payload)
     assert response.status_code == 401
     assert response.get_json() == {"error": "unauthorized"}
-    assert anon.get("/api/events").get_json() == []
+    assert admin_client.get("/api/events").get_json() == []
 
 
 @pytest.mark.parametrize(("method", "url", "payload"), PI_REQUESTS)
@@ -73,7 +79,14 @@ def test_pi_key_rotation_invalidates_old_key(client, monkeypatch):
 
 
 def test_web_endpoints_do_not_require_pi_key(app):
-    anon = app.test_client()
-    assert anon.get("/api/employees").status_code == 200
-    assert anon.get("/api/events").status_code == 200
-    assert anon.get("/api/events/inside").status_code == 200
+    make_admin(app)
+    web = app.test_client()
+    assert web.post("/api/auth/login", json={"username": ADMIN_USER, "password": ADMIN_PASSWORD}).status_code == 200
+    assert web.get("/api/employees").status_code == 200
+    assert web.get("/api/events").status_code == 200
+    assert web.get("/api/events/inside").status_code == 200
+
+
+def test_database_path_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "env.db"))
+    assert create_app().config["DATABASE"] == tmp_path / "env.db"

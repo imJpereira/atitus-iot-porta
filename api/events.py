@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
-from api import get_db, require_pi_key
+from api import get_db, require_admin, require_pi_key
 from api.employees import error, serialize
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
@@ -12,6 +12,7 @@ bp = Blueprint("events", __name__, url_prefix="/api/events")
 def check_pi_key():
     if request.method == "POST":
         return require_pi_key()
+    return require_admin()
 
 
 EVENT_TYPES = ("entrada", "saida", "acesso_negado", "tentativa_invasao")
@@ -106,7 +107,7 @@ def create_batch():
 def list_events():
     args = request.args
     clauses, params = [], []
-    for name, clause in (("from", "timestamp >= ?"), ("to", "timestamp < ?")):
+    for name, clause in (("from", "ev.timestamp >= ?"), ("to", "ev.timestamp < ?")):
         if name not in args:
             continue
         # "+" in a raw query string arrives as a space
@@ -118,24 +119,30 @@ def list_events():
     if "type" in args:
         if args["type"] not in EVENT_TYPES:
             return error(f"type must be one of: {', '.join(EVENT_TYPES)}", 400)
-        clauses.append("type = ?")
+        clauses.append("ev.type = ?")
         params.append(args["type"])
     if "employee_id" in args:
         employee_id = int_arg("employee_id", 0, 1)
         if employee_id is None:
             return error("employee_id must be a positive integer", 400)
-        clauses.append("employee_id = ?")
+        clauses.append("ev.employee_id = ?")
         params.append(employee_id)
     limit = int_arg("limit", 100, 1)
     offset = int_arg("offset", 0, 0)
     if limit is None or offset is None:
         return error("limit must be >= 1 and offset >= 0", 400)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    rows = get_db().execute(
-        f"SELECT * FROM events {where} ORDER BY timestamp DESC, rowid DESC LIMIT ? OFFSET ?",
+    db = get_db()
+    rows = db.execute(
+        "SELECT ev.*, emp.name AS employee_name FROM events ev "
+        f"LEFT JOIN employees emp ON emp.id = ev.employee_id {where} "
+        "ORDER BY ev.timestamp DESC, ev.rowid DESC LIMIT ? OFFSET ?",
         [*params, min(limit, MAX_LIMIT), offset],
     ).fetchall()
-    return jsonify([dict(row) for row in rows])
+    total = db.execute(f"SELECT COUNT(*) FROM events ev {where}", params).fetchone()[0]
+    response = jsonify([dict(row) for row in rows])
+    response.headers["X-Total-Count"] = str(total)
+    return response
 
 
 @bp.get("/inside")

@@ -11,6 +11,11 @@ VALID = {
 }
 
 
+@pytest.fixture
+def client(admin_client):
+    return admin_client
+
+
 def send(client, **overrides):
     return client.post("/api/events", json={**VALID, **overrides})
 
@@ -188,6 +193,78 @@ def test_list_limit_and_offset(client):
 ])
 def test_list_invalid_params_400(client, query):
     assert client.get("/api/events", query_string=query).status_code == 400
+
+
+def test_list_orders_by_timestamp_ties_by_insertion_desc(client):
+    for event_id in ("first", "second", "third"):
+        send(client, id=event_id)
+    assert [e["id"] for e in listed(client)] == ["third", "second", "first"]
+
+
+def test_list_limit_and_offset_caps_limit_at_max_limit(client, monkeypatch):
+    monkeypatch.setattr("api.events.MAX_LIMIT", 2)
+    for index in range(3):
+        send(client, id=f"e{index}", timestamp=f"2026-10-27T10:00:0{index}Z")
+    response = client.get("/api/events", query_string={"limit": 5000})
+    assert [e["id"] for e in response.get_json()] == ["e2", "e1"]
+    assert response.headers["X-Total-Count"] == "3"
+
+
+def test_list_employee_name_known_follows_rename(client):
+    employee = make_employee(client)
+    send(client)
+    assert listed(client)[0]["employee_name"] == "Ana"
+    client.patch(f"/api/employees/{employee['id']}", json={"name": "Bia"})
+    assert listed(client)[0]["employee_name"] == "Bia"
+
+
+def test_list_employee_name_unknown_tag_and_deleted_employee(client):
+    employee = make_employee(client)
+    send(client, id="known")
+    send(client, id="stranger", rfid_tag="ZZ")
+    client.delete(f"/api/employees/{employee['id']}")
+    for event in listed(client):
+        assert event["employee_name"] is None
+        assert event["employee_id"] is None
+    assert {e["rfid_tag"] for e in listed(client)} == {"AA:BB", "ZZ"}
+
+
+def test_list_combined_filters(client):
+    make_employee(client)
+    make_employee(client, tag="CC:DD", registration_id="R2")
+    hit = {"id": "hit", "timestamp": "2026-10-27T09:00:00Z", "type": "saida"}
+    send(client, **hit)
+    send(client, **{**hit, "id": "other-type", "type": "entrada"})
+    send(client, **{**hit, "id": "other-employee", "rfid_tag": "CC:DD"})
+    send(client, **{**hit, "id": "too-early", "timestamp": "2026-10-27T07:59:59Z"})
+    send(client, **{**hit, "id": "too-late", "timestamp": "2026-10-27T10:00:00Z"})
+    send(client, **{**hit, "id": "stranger", "rfid_tag": "ZZ"})
+    employee_id = client.get("/api/employees").get_json()[0]["id"]
+    response = client.get("/api/events", query_string={
+        "from": "2026-10-27T08:00:00Z", "to": "2026-10-27T10:00:00Z",
+        "type": "saida", "employee_id": employee_id,
+    })
+    assert [e["id"] for e in response.get_json()] == ["hit"]
+    assert response.headers["X-Total-Count"] == "1"
+
+
+def test_list_timestamp_utc(client):
+    send(client, timestamp="2026-10-27T10:00:00-03:00")
+    assert listed(client)[0]["timestamp"] == "2026-10-27T13:00:00Z"
+
+
+def test_list_total_count_ignores_limit_and_offset(client):
+    seed_history(client)
+
+    def total(**query):
+        response = client.get("/api/events", query_string=query)
+        return response.headers["X-Total-Count"], len(response.get_json())
+
+    assert total() == ("3", 3)
+    assert total(limit=1, offset=1) == ("3", 1)
+    assert total(type="saida", limit=1) == ("1", 1)
+    assert total(offset=10) == ("3", 0)
+    assert total(type="tentativa_invasao") == ("0", 0)
 
 
 def test_inside_follows_last_entrada_or_saida(client):

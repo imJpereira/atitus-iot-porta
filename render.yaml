@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: atitus-iot-porta
+    runtime: python
+    plan: free  # sem Disk: SQLite zera a cada restart/deploy; sem Shell: admin criado no start
+    buildCommand: pip install uv && uv sync --frozen
+    startCommand: uv run flask --app api create-admin $ADMIN_USERNAME || true; uv run gunicorn "api:create_app()" --bind 0.0.0.0:$PORT --workers 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.14"
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PI_API_KEY
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

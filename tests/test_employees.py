@@ -6,6 +6,11 @@ VALID = {"name": "Ana", "registration_id": "R1", "rfid_tag": "AA:BB", "role": "d
 REQUIRED = ["name", "registration_id", "role"]
 
 
+@pytest.fixture
+def client(admin_client):
+    return admin_client
+
+
 def post(client, **overrides):
     return client.post("/api/employees", json={**VALID, **overrides})
 
@@ -291,6 +296,44 @@ def test_sync_omits_untagged_and_deleted(client):
     assert client.get("/api/sync/employees").get_json() == []
 
 
+def sync_tags(client):
+    return [e["rfid_tag"] for e in client.get("/api/sync/employees").get_json()]
+
+
+def untagged(client, **overrides):
+    payload = {k: v for k, v in VALID.items() if k != "rfid_tag"}
+    return client.post("/api/employees", json={**payload, **overrides}).get_json()
+
+
+def test_patch_links_tag_and_appears_in_sync(client):
+    created = untagged(client)
+    assert sync_tags(client) == []
+    response = client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": " aa:bb "})
+    assert response.status_code == 200
+    assert response.get_json()["rfid_tag"] == "AA:BB"
+    assert sync_tags(client) == ["AA:BB"]
+
+
+def test_swap_tag_old_disappears_from_sync(client):
+    created = post(client).get_json()
+    client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": "NEW"})
+    assert sync_tags(client) == ["NEW"]
+
+
+def test_unlink_tag_leaves_sync(client):
+    created = post(client).get_json()
+    client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": None})
+    assert sync_tags(client) == []
+
+
+def test_permission_and_status_in_sync(client):
+    created = post(client).get_json()
+    client.patch(f"/api/employees/{created['id']}", json={"has_room_access": True, "is_active": False})
+    [synced] = client.get("/api/sync/employees").get_json()
+    assert synced["has_room_access"] is True
+    assert synced["is_active"] is False
+
+
 def test_migration_002_preserves_data(tmp_path):
     from pathlib import Path
 
@@ -311,3 +354,44 @@ def test_migration_002_preserves_data(tmp_path):
         "SELECT name, registration_id, rfid_tag, role, is_active FROM employees"
     ).fetchone()
     assert row == ("Ana", "R1", "T1", "dev", 0)
+
+
+def owner_of(employee):
+    return {k: employee[k] for k in ("id", "name", "registration_id")}
+
+
+def test_patch_duplicate_rfid_tag_409_names_owner(client):
+    owner = post(client).get_json()
+    other = post(client, registration_id="R2", rfid_tag="T2").get_json()
+    response = client.patch(f"/api/employees/{other['id']}", json={"rfid_tag": " aa:bb "})
+    assert response.status_code == 409
+    body = response.get_json()
+    assert body == {"error": "rfid_tag already exists", "owner": owner_of(owner)}
+    assert client.get(f"/api/employees/{other['id']}").get_json() == other
+    assert client.get(f"/api/employees/{owner['id']}").get_json() == owner
+
+
+def test_post_duplicate_rfid_tag_409_names_owner(client):
+    owner = post(client).get_json()
+    response = post(client, registration_id="R2")
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "rfid_tag already exists", "owner": owner_of(owner)}
+    assert len(client.get("/api/employees").get_json()) == 1
+
+
+def test_duplicate_registration_409_has_no_owner(client):
+    post(client)
+    other = post(client, registration_id="R2", rfid_tag="T2").get_json()
+    # other's own tag is looked up on conflict; registration_id conflicts must not leak it as owner
+    response = client.patch(f"/api/employees/{other['id']}", json={"registration_id": "R1"})
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "registration_id already exists"}
+    response = post(client, rfid_tag="CC:DD")
+    assert response.get_json() == {"error": "registration_id already exists"}
+
+
+def test_patch_own_tag_200(client):
+    created = post(client).get_json()
+    response = client.patch(f"/api/employees/{created['id']}", json={"rfid_tag": " aa:bb "})
+    assert response.status_code == 200
+    assert response.get_json() == created
