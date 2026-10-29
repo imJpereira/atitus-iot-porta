@@ -2,12 +2,64 @@
 
 Stack e convenções em [AGENTS.md](AGENTS.md).
 
+## Como rodar
+
+Pré-requisitos: [uv](https://docs.astral.sh/uv/) e Python 3.14+.
+
 ```bash
-uv sync
-export PI_API_KEY=... SECRET_KEY=...   # ver .env.example
-uv run flask --app api create-admin <usuario>   # pede a senha (ou use ADMIN_PASSWORD)
-uv run flask --app api run --debug
+git clone https://github.com/imJpereira/atitus-iot-porta.git
+cd atitus-iot-porta
 ```
+
+### 1. Backend + frontend (computador/servidor)
+
+1. Instale as dependências:
+
+   ```bash
+   uv sync
+   ```
+
+2. Copie o exemplo de variáveis e defina `PI_API_KEY` e `SECRET_KEY` (o Flask não lê o `.env` sozinho; exporte no shell):
+
+   ```bash
+   cp .env.example .env
+   export PI_API_KEY=minha-chave SECRET_KEY=outra-chave
+   ```
+
+3. Crie o usuário administrador (pede a senha; ou use `ADMIN_PASSWORD`):
+
+   ```bash
+   uv run flask --app api create-admin admin
+   ```
+
+4. Suba a aplicação:
+
+   ```bash
+   uv run flask --app api run --debug
+   ```
+
+5. Abra <http://127.0.0.1:5000> e faça login com o usuário criado.
+
+O banco SQLite é criado em `data/app.db`. Testes: `uv run pytest`.
+
+### 2. Raspberry Pi (controle de acesso)
+
+1. Monte o circuito conforme [Hardware](#hardware-raspberry-pi) e habilite o SPI (`sudo raspi-config` → *Interface Options* → *SPI*).
+2. Instale as dependências da Pi:
+
+   ```bash
+   uv sync --group rasp
+   ```
+
+3. Configure o `.env` com `API_BASE_URL` (URL do backend) e `PI_API_KEY` **igual** ao do backend.
+4. Teste o hardware e inicie o controle de acesso:
+
+   ```bash
+   uv run python rasp/test_hardware.py
+   uv run python -m rasp.access
+   ```
+
+5. No frontend, cadastre colaboradores e vincule a tag RFID de cada um.
 
 Rotas administrativas (`/api/employees`, `GET /api/events*`, `/api/export/*`) exigem login em `POST /api/auth/login`; a Raspberry Pi usa só `X-API-Key`.
 
