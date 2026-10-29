@@ -164,19 +164,18 @@ Regra de alternância, por colaborador, só com eventos `entrada`/`saida` do dia
 * **Buzzer:** terminal positivo (`+`) no pino físico 8 (**GPIO 14**) e terminal negativo (`-`) no barramento **GND** da protoboard.
 * **Leitor RFID (RC522):** conectado ao barramento SPI0 (habilitar via `sudo raspi-config` → *Interface Options* → *SPI*). Alimentar exclusivamente em **3.3V** (pino 1).
 
-### Lista de Componentes e Custo Estimado (MVP)
+### Lista de Componentes
 
-| Componente | Especificação | Qtd. | Custo Unit. (R$) | Subtotal (R$) |
-| :--- | :--- | :---: | :---: | :---: |
-| **Raspberry Pi** | Raspberry Pi 3B+ / 4B (com fonte e microSD) | 1 | 380,00 | 380,00 |
-| **Módulo Leitor RFID** | MFRC522 (13,56 MHz, SPI, 3.3V) + tag/chaveiro | 1 | 18,00 | 18,00 |
-| **Tags / Crachás RFID extras** | Mifare 13,56 MHz (cartão ISO / chaveiro) | 4 | 3,00 | 12,00 |
-| **LEDs Difusos 5 mm** | 1x Verde, 1x Amarelo, 1x Vermelho | 3 | 0,50 | 1,50 |
-| **Resistores** | 220 Ω ou 330 Ω (1/4 W) | 3 | 0,20 | 0,60 |
-| **Buzzer** | Buzzer 3.3V / 5V (ativo ou passivo) | 1 | 3,50 | 3,50 |
-| **Protoboard** | 400 ou 830 pontos | 1 | 15,00 | 15,00 |
-| **Jumpers** | Kit cabos Macho-Fêmea e Macho-Macho (20 cm) | 1 | 12,00 | 12,00 |
-| **Total Estimado** | | | | **R$ 442,60** |
+| Componente | Especificação | Qtd. |
+| :--- | :--- | :---: |
+| **Raspberry Pi** | Raspberry Pi 3B+ / 4B (com fonte e microSD) | 1 |
+| **Módulo Leitor RFID** | MFRC522 (13,56 MHz, SPI, 3.3V) + tag/chaveiro | 1 |
+| **Tags / Crachás RFID extras** | Mifare 13,56 MHz (cartão ISO / chaveiro) | 4 |
+| **LEDs Difusos 5 mm** | 1x Verde, 1x Amarelo, 1x Vermelho | 3 |
+| **Resistores** | 220 Ω ou 330 Ω (1/4 W) | 3 |
+| **Buzzer** | Buzzer 3.3V / 5V (ativo ou passivo) | 1 |
+| **Protoboard** | 400 ou 830 pontos | 1 |
+| **Jumpers** | Kit cabos Macho-Fêmea e Macho-Macho (20 cm) | 1 |
 
 ### Teste de Hardware
 
