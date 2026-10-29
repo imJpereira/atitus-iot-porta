@@ -21,6 +21,10 @@ dev = [
     { name = "pandas" },
     { name = "pytest" },
 ]
+rasp = [
+    { name = "mfrc522" },
+    { name = "rpi-gpio" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -32,6 +36,10 @@ requires-dist = [
 dev = [
     { name = "pandas", specifier = ">=3.1.0" },
     { name = "pytest", specifier = ">=9.2.0" },
+]
+rasp = [
+    { name = "mfrc522", specifier = ">=0.0.7" },
+    { name = "rpi-gpio", specifier = ">=0.7.1" },
 ]
 
 [[package]]
@@ -196,6 +204,19 @@ wheels = [
 ]
 
 [[package]]
+name = "mfrc522"
+version = "0.0.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "rpi-gpio" },
+    { name = "spidev" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3c/34/f2e893baa79d82d4faad8abb7c5c0fcd138d367f6f38071f7afe883f65a2/mfrc522-0.0.7.tar.gz", hash = "sha256:74c7020a4fc4870f5d7022542c36143fba771055a2fae2e5929e6a1159d2bf00", size = 5652, upload-time = "2019-04-02T00:36:42.692Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d5/b5/d33c0634cece0931c3c4e0978b0db58f248045c3b379ccf2d512b76fe044/mfrc522-0.0.7-py3-none-any.whl", hash = "sha256:874fd0385a7e40190063b60af83d615534b1f764c6b776fed1fcc94551c1e62f", size = 18610, upload-time = "2019-04-02T00:36:40.985Z" },
+]
+
+[[package]]
 name = "numpy"
 version = "2.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -348,6 +369,12 @@ wheels = [
 ]
 
 [[package]]
+name = "rpi-gpio"
+version = "0.7.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/0f/10b524a12b3445af1c607c27b2f5ed122ef55756e29942900e5c950735f2/RPi.GPIO-0.7.1.tar.gz", hash = "sha256:cd61c4b03c37b62bba4a5acfea9862749c33c618e0295e7e90aa4713fb373b70", size = 29090, upload-time = "2022-02-06T15:15:06.022Z" }
+
+[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -355,6 +382,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
+
+[[package]]
+name = "spidev"
+version = "3.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/67/87/039b6eeea781598015b538691bc174cc0bf77df9d4d2d3b8bf9245c0de8c/spidev-3.8.tar.gz", hash = "sha256:2bc02fb8c6312d519ebf1f4331067427c0921d3f77b8bcaf05189a2e8b8382c0", size = 13893, upload-time = "2025-09-15T18:56:20.672Z" }
 
 [[package]]
 name = "tzdata"

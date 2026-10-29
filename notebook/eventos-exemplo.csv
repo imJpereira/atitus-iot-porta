@@ -1,0 +1,6 @@
+id,timestamp,tipo,tag_rfid,colaborador_id,nome,matricula,origem
+df5827b9-af21-4222-ad14-4b9ece43945a,2026-10-29T00:03:32Z,tentativa_invasao,771439528262,,,,raspberry_pi
+33db60b3-2c12-4bbd-954e-d494ff631da8,2026-10-29T00:03:25Z,saida,770978550471,1,pereira,mt-001,raspberry_pi
+00a415ec-19c1-4871-9acb-552722a78eda,2026-10-29T00:02:30Z,entrada,770978550471,1,pereira,mt-001,raspberry_pi
+7258f89b-1c17-483f-bf77-2d37fe76e92d,2026-10-29T00:01:58Z,tentativa_invasao,770978550471,1,pereira,mt-001,raspberry_pi
+02d58926-defa-4787-b54b-e746c4247011,2026-10-29T00:01:20Z,tentativa_invasao,770978550471,,,,raspberry_pi

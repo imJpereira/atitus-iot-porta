@@ -12,6 +12,10 @@ dev = [
     "pandas>=3.1.0",
     "pytest>=9.2.0",
 ]
+rasp = [
+    "mfrc522>=0.0.7",
+    "rpi-gpio>=0.7.1",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
